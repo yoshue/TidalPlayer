@@ -9,6 +9,8 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import androidx.media3.common.MediaItem
 import androidx.media3.exoplayer.ExoPlayer
+import coil.load
+import coil.transform.RoundedCornersTransformation
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -22,57 +24,68 @@ class MainActivity : AppCompatActivity() {
     private var player: ExoPlayer? = null
     private lateinit var statusText: TextView
     private lateinit var songInfo: TextView
+    private lateinit var albumArt: ImageView
     private lateinit var loader: ProgressBar
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        // DISEÑO OLED PREMIUM
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(Color.BLACK)
-            setPadding(60, 120, 60, 60)
+            setPadding(60, 80, 60, 60)
             gravity = Gravity.CENTER_HORIZONTAL
         }
 
-        val title = TextView(this).apply {
-            text = "OLED HQ PLAYER"
-            setTextColor(Color.WHITE)
-            textSize = 28f
-            setPadding(0, 0, 0, 80)
+        val inputLayout = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
         }
 
         val inputField = EditText(this).apply {
-            hint = "Canción y Artista..."
-            setHintTextColor(Color.DKGRAY)
+            hint = "Canción o Artista..."
+            setHintTextColor(Color.GRAY)
             setTextColor(Color.WHITE)
-            setBackgroundColor(Color.parseColor("#111111"))
-            setPadding(40, 40, 40, 40)
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            setBackgroundColor(Color.parseColor("#121212"))
+            setPadding(30, 30, 30, 30)
         }
 
         val btnSearch = Button(this).apply {
-            text = "REPRODUCIR EN 320KBPS"
+            text = "GO"
             setBackgroundColor(Color.WHITE)
             setTextColor(Color.BLACK)
         }
 
-        loader = ProgressBar(this).apply { visibility = View.GONE }
+        inputLayout.addView(inputField)
+        inputLayout.addView(btnSearch)
+
+        // Espacio para la carátula
+        albumArt = ImageView(this).apply {
+            layoutParams = LinearLayout.LayoutParams(800, 800).apply {
+                setMargins(0, 100, 0, 50)
+            }
+            visibility = View.GONE // Oculto hasta que haya una canción
+        }
 
         songInfo = TextView(this).apply {
             setTextColor(Color.WHITE)
-            textSize = 18f
+            textSize = 22f
             gravity = Gravity.CENTER
-            setPadding(0, 80, 0, 20)
+            setPadding(0, 20, 0, 10)
         }
 
         statusText = TextView(this).apply {
-            text = "Calidad seleccionada: Alta (320kbps)"
-            setTextColor(Color.parseColor("#3DDC84"))
+            text = "320kbps Mode Active"
+            setTextColor(Color.parseColor("#3DDC84")) // Verde
             textSize = 12f
         }
 
-        root.addView(title)
-        root.addView(inputField)
-        root.addView(btnSearch)
+        loader = ProgressBar(this).apply { visibility = View.GONE }
+
+        root.addView(inputLayout)
+        root.addView(albumArt)
         root.addView(loader)
         root.addView(songInfo)
         root.addView(statusText)
@@ -94,7 +107,6 @@ class MainActivity : AppCompatActivity() {
         lifecycleScope.launch(Dispatchers.IO) {
             try {
                 val encoded = URLEncoder.encode(query, "UTF-8")
-                // Usamos la API de Saavn que es famosa en GitHub por ser abierta y HQ
                 val searchUrl = "https://saavn.me/search/songs?query=$encoded&limit=1"
                 
                 val connection = URL(searchUrl).openConnection() as HttpURLConnection
@@ -108,26 +120,30 @@ class MainActivity : AppCompatActivity() {
                     val name = track.getString("name")
                     val artist = track.getJSONObject("primaryArtists").getString("name")
                     
-                    // Saavn entrega varios niveles. El último del array suele ser 320kbps.
+                    // Imágenes: Saavn da varias calidades, la última es 500x500
+                    val images = track.getJSONArray("image")
+                    val coverUrl = images.getJSONObject(images.length() - 1).getString("link")
+
+                    // Audio: 320kbps es el último link del array
                     val downloadUrls = track.getJSONArray("downloadUrl")
                     val hqUrl = downloadUrls.getJSONObject(downloadUrls.length() - 1).getString("link")
 
                     withContext(Dispatchers.Main) {
                         loader.visibility = View.GONE
+                        albumArt.visibility = View.VISIBLE
+                        albumArt.load(coverUrl) {
+                            crossfade(true)
+                            transformations(RoundedCornersTransformation(30f))
+                        }
                         songInfo.text = "$name\n$artist"
-                        statusText.text = "Reproduciendo a 320kbps (Real)"
+                        statusText.text = "Reproduciendo 320kbps real"
                         playAudio(hqUrl)
-                    }
-                } else {
-                    withContext(Dispatchers.Main) {
-                        loader.visibility = View.GONE
-                        statusText.text = "No se encontró en alta calidad."
                     }
                 }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
                     loader.visibility = View.GONE
-                    statusText.text = "Error: El servidor HQ no responde."
+                    statusText.text = "Error al conectar con el servidor."
                 }
             }
         }
@@ -143,6 +159,6 @@ class MainActivity : AppCompatActivity() {
         super.onDestroy()
         player?.release()
     }
-}player?.release()
+}ayer?.release()
     }
 }
