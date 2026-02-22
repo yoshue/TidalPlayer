@@ -33,9 +33,12 @@ class MainActivity : AppCompatActivity() {
             setPadding(50, 50, 50, 50)
         }
 
-        val searchInput = EditText(this).apply { hint = "Nombre de canción..." }
+        val searchInput = EditText(this).apply { 
+            hint = "Nombre de canción..." 
+            setSingleLine(true)
+        }
         val searchButton = Button(this).apply { text = "BUSCAR Y REPRODUCIR" }
-        val statusText = TextView(this).apply { text = "Estado: Listo" }
+        val statusText = TextView(this).apply { text = "Estado: Esperando búsqueda" }
 
         layout.addView(searchInput)
         layout.addView(searchButton)
@@ -55,7 +58,8 @@ class MainActivity : AppCompatActivity() {
                         val track = response.items.firstOrNull()
                         
                         if (track != null) {
-                            statusText.text = "Sonando: ${track.title}"
+                            statusText.text = "Reproduciendo: ${track.title}"
+                            // Usamos el ID para generar la URL de descarga
                             val streamUrl = "https://clm-6.tidal.squid.wtf/api/download?id=${track.id}&quality=LOSSLESS"
                             
                             val mediaItem = MediaItem.fromUri(streamUrl)
@@ -63,10 +67,12 @@ class MainActivity : AppCompatActivity() {
                             player?.prepare()
                             player?.play()
                         } else {
-                            statusText.text = "No se encontró la canción"
+                            statusText.text = "No se encontraron resultados para: $query"
                         }
                     } catch (e: Exception) {
-                        statusText.text = "Error: Verifica tu conexión"
+                        // Aquí nos mostrará el error real en la pantalla del móvil
+                        statusText.text = "Error Técnico: ${e.localizedMessage}"
+                        e.printStackTrace()
                     }
                 }
             }
