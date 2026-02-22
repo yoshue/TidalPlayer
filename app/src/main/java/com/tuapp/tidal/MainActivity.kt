@@ -16,8 +16,6 @@ import retrofit2.converter.gson.GsonConverterFactory
 class MainActivity : AppCompatActivity() {
 
     private var player: ExoPlayer? = null
-    
-    // Configuración de la API con la URL base limpia
     private val apiService by lazy {
         Retrofit.Builder()
             .baseUrl("https://tidal.squid.wtf/")
@@ -29,53 +27,53 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
-        // Diseño de la interfaz por código
         val layout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(50, 50, 50, 50)
         }
 
         val searchInput = EditText(this).apply { 
-            hint = "Nombre de canción o artista..." 
+            hint = "Escribe una canción..." 
             setSingleLine(true)
         }
-        
-        val searchButton = Button(this).apply { 
-            text = "BUSCAR Y REPRODUCIR" 
-        }
-        
-        val statusText = TextView(this).apply { 
-            text = "Estado: Esperando búsqueda"
-            textSize = 16f
-        }
+        val searchButton = Button(this).apply { text = "BUSCAR Y REPRODUCIR" }
+        val statusText = TextView(this).apply { text = "Listo" }
 
         layout.addView(searchInput)
         layout.addView(searchButton)
         layout.addView(statusText)
         setContentView(layout)
 
-        // Inicializamos el reproductor
         player = ExoPlayer.Builder(this).build()
 
         searchButton.setOnClickListener {
             val query = searchInput.text.toString()
             if (query.isNotEmpty()) {
-                statusText.text = "Buscando en los servidores de Tidal..."
-                
+                statusText.text = "Buscando..."
                 lifecycleScope.launch {
                     try {
-                        // Llamada a la API
                         val response = apiService.searchTracks(query)
                         val tracks = response.items
-
                         if (tracks.isNotEmpty()) {
-                            val firstTrack = tracks[0]
-                            
-                            // Actualizamos la interfaz con la info encontrada
-                            statusText.text = "Encontradas ${tracks.size} canciones.\n" +
-                                            "Reproduciendo ahora: ${firstTrack.title}\n" +
-                                            "Artista: ${firstTrack.artist.name}"
-                            
-                            // Construimos la URL de descarga/stream
-                            // Usamos el ID de la canción obtenido de la búsqueda
-                            val streamUrl = "https://clm-6.tidal.squid.wtf/api/download?id=${firstTrack.id}&
+                            val track = tracks[0]
+                            statusText.text = "Sonando: ${track.title}"
+                            val streamUrl = "https://clm-6.tidal.squid.wtf/api/download?id=${track.id}&quality=LOSSLESS"
+                            player?.setMediaItem(MediaItem.fromUri(streamUrl))
+                            player?.prepare()
+                            player?.play()
+                        } else {
+                            statusText.text = "No hay resultados"
+                        }
+                    } catch (e: Exception) {
+                        statusText.text = "Error: ${e.message}"
+                    }
+                }
+            }
+        }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        player?.release()
+    }
+}
