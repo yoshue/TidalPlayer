@@ -31,18 +31,16 @@ android {
 }
 
 dependencies {
-    // Librerías base de Android
+    // Librerías base
     implementation "androidx.core:core-ktx:1.12.0"
     implementation "androidx.appcompat:appcompat:1.6.1"
     implementation "com.google.android.material:material:1.11.0"
-    implementation "androidx.constraintlayout:constraintlayout:2.1.4"
-
-    // Motor de Audio Media3 (ExoPlayer)
+    
+    // Media3 para el audio FLAC/HQ
     implementation "androidx.media3:media3-exoplayer:1.2.0"
-    implementation "androidx.media3:media3-ui:1.2.0"
     implementation "androidx.media3:media3-common:1.2.0"
 
-    // Corrutinas para que la app no se trabe al buscar
+    // Corrutinas
     implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3"
     implementation "androidx.lifecycle:lifecycle-runtime-ktx:2.6.2"
 }
