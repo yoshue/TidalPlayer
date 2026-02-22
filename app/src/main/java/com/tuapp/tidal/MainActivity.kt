@@ -1,26 +1,35 @@
 package com.tuapp.tidal
 
 import android.os.Bundle
-import android.widget.Button
-import android.widget.EditText
-import android.widget.LinearLayout
-import android.widget.TextView
+import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import androidx.media3.common.MediaItem
 import androidx.media3.exoplayer.ExoPlayer
 import kotlinx.coroutines.launch
+import okhttp3.OkHttpClient
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
-import java.net.URLEncoder
 
 class MainActivity : AppCompatActivity() {
 
     private var player: ExoPlayer? = null
     
+    // Configuramos el cliente para que sea un "clon" de la web oficial
+    private val httpClient = OkHttpClient.Builder().addInterceptor { chain ->
+        val request = chain.request().newBuilder()
+            .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+            .header("Referer", "https://tidal.squid.wtf/")
+            .header("Origin", "https://tidal.squid.wtf")
+            .header("x-requested-with", "XMLHttpRequest")
+            .build()
+        chain.proceed(request)
+    }.build()
+
     private val apiService by lazy {
         Retrofit.Builder()
             .baseUrl("https://tidal.squid.wtf/")
+            .client(httpClient)
             .addConverterFactory(GsonConverterFactory.create())
             .build()
             .create(MusicApiService::class.java)
@@ -31,18 +40,12 @@ class MainActivity : AppCompatActivity() {
         
         val layout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(60, 60, 60, 60)
+            setPadding(50, 50, 50, 50)
         }
 
-        val searchInput = EditText(this).apply { 
-            hint = "Canción o Artista..." 
-            setSingleLine(true)
-        }
-        val searchButton = Button(this).apply { text = "BUSCAR Y REPRODUCIR" }
-        val statusText = TextView(this).apply { 
-            text = "Listo para iniciar"
-            setPadding(0, 20, 0, 0)
-        }
+        val searchInput = EditText(this).apply { hint = "Buscar en Tidal Squid..." }
+        val searchButton = Button(this).apply { text = "BUSCAR" }
+        val statusText = TextView(this).apply { text = "Listo" }
 
         layout.addView(searchInput)
         layout.addView(searchButton)
@@ -52,41 +55,32 @@ class MainActivity : AppCompatActivity() {
         player = ExoPlayer.Builder(this).build()
 
         searchButton.setOnClickListener {
-            val rawQuery = searchInput.text.toString()
-            if (rawQuery.isNotEmpty()) {
-                statusText.text = "Buscando..."
-                
+            val query = searchInput.text.toString()
+            if (query.isNotEmpty()) {
+                statusText.text = "Consultando API (Modo Oficial)..."
                 lifecycleScope.launch {
                     try {
-                        // Limpiamos la búsqueda para evitar el error 404 por caracteres raros
-                        val cleanQuery = URLEncoder.encode(rawQuery, "UTF-8")
-                        
-                        val response = apiService.searchTracks(cleanQuery)
+                        val response = apiService.searchTracks(query)
                         val tracks = response.items
                         
-                        if (tracks.isNotEmpty()) {
+                        if (tracks != null && tracks.isNotEmpty()) {
                             val track = tracks[0]
-                            statusText.text = "Sonando: ${track.title}\nArtista: ${track.artist.name}"
+                            statusText.text = "Reproduciendo: ${track.title}"
                             
+                            // La URL de descarga también requiere que "engañemos" al servidor
                             val streamUrl = "https://clm-6.tidal.squid.wtf/api/download?id=${track.id}&quality=LOSSLESS"
                             
                             player?.setMediaItem(MediaItem.fromUri(streamUrl))
                             player?.prepare()
                             player?.play()
                         } else {
-                            statusText.text = "No se encontró nada para: $rawQuery"
+                            statusText.text = "Sin resultados."
                         }
                     } catch (e: Exception) {
-                        // Si sale 404 aquí, es que el servidor cambió la ruta interna
-                        statusText.text = "Error del servidor: ${e.message}"
+                        statusText.text = "Error: ${e.localizedMessage}"
                     }
                 }
             }
         }
-    }
-
-    override fun onDestroy() {
-        super.onDestroy()
-        player?.release()
     }
 }
