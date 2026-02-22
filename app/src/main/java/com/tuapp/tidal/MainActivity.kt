@@ -32,89 +32,79 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // CONTENEDOR PRINCIPAL OLED
+        // DISEÑO MINIMALISTA NEGRO PURO
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(Color.BLACK)
-            setPadding(60, 60, 60, 60)
+            setPadding(60, 100, 60, 60)
             gravity = Gravity.CENTER_HORIZONTAL
         }
 
-        // BUSCADOR MINIMALISTA
+        // BUSCADOR SUPER SLIM
         val searchBox = EditText(this).apply {
-            hint = "Buscar música HQ..."
-            setHintTextColor(Color.DKGRAY)
+            hint = "Escribe canción..."
+            setHintTextColor(Color.GRAY)
             setTextColor(Color.WHITE)
-            setBackgroundColor(Color.parseColor("#0A0A0A"))
+            setBackgroundColor(Color.parseColor("#0D0D0D"))
             setPadding(40, 40, 40, 40)
-            textSize = 14f
+            textSize = 15f
         }
 
         val btnSearch = Button(this).apply {
-            text = "BUSCAR"
+            text = "BUSCAR HQ"
             setBackgroundColor(Color.TRANSPARENT)
             setTextColor(Color.WHITE)
             textSize = 12f
         }
 
-        // PORTADA (AL CENTRO)
+        // PORTADA OLED
         albumArt = ImageView(this).apply {
-            layoutParams = LinearLayout.LayoutParams(900, 900).apply {
-                setMargins(0, 100, 0, 80)
+            layoutParams = LinearLayout.LayoutParams(850, 850).apply {
+                setMargins(0, 80, 0, 60)
             }
-            scaleType = ImageView.ScaleType.CENTER_CROP
             visibility = View.GONE
         }
 
-        // INFO DE CANCIÓN
         songInfo = TextView(this).apply {
             setTextColor(Color.WHITE)
-            textSize = 20f
+            textSize = 18f
             gravity = Gravity.CENTER
             setPadding(0, 0, 0, 10)
         }
 
         statusText = TextView(this).apply {
-            text = "320kbps Lossy-High"
+            text = "320kbps Standard"
             setTextColor(Color.parseColor("#1DB954"))
             textSize = 10f
-            setPadding(0, 0, 0, 100)
+            setPadding(0, 0, 0, 80)
         }
 
-        // CONTROLES DE REPRODUCCIÓN
-        val controlsLayout = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER
-        }
-
+        // CONTROLES
         btnPlayPause = ImageButton(this).apply {
-            // Usamos iconos básicos de Android
             setImageResource(android.R.drawable.ic_media_play)
             setBackgroundColor(Color.TRANSPARENT)
             setColorFilter(Color.WHITE)
-            scaleX = 2f
-            scaleY = 2f
+            scaleX = 2.5f
+            scaleY = 2.5f
         }
 
-        controlsLayout.addView(btnPlayPause)
         loader = ProgressBar(this).apply { visibility = View.GONE }
 
-        // AÑADIR TODO AL ROOT
+        // ORGANIZACIÓN
         root.addView(searchBox)
         root.addView(btnSearch)
         root.addView(albumArt)
         root.addView(loader)
         root.addView(songInfo)
         root.addView(statusText)
-        root.addView(controlsLayout)
+        root.addView(btnPlayPause)
 
         setContentView(root)
-
         setupPlayer()
 
         btnSearch.setOnClickListener {
             val q = searchBox.text.toString()
-            if (q.isNotEmpty()) searchSong(q)
+            if (q.isNotEmpty()) searchHQ(q)
         }
 
         btnPlayPause.setOnClickListener {
@@ -137,11 +127,12 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun searchSong(query: String) {
+    private fun searchHQ(query: String) {
         loader.visibility = View.VISIBLE
         lifecycleScope.launch(Dispatchers.IO) {
             try {
                 val encoded = URLEncoder.encode(query, "UTF-8")
+                // Usamos la API de Saavn para 320kbps reales
                 val response = URL("https://saavn.me/search/songs?query=$encoded&limit=1").readText()
                 val json = JSONObject(response)
                 val track = json.getJSONObject("data").getJSONArray("results").getJSONObject(0)
@@ -149,13 +140,13 @@ class MainActivity : AppCompatActivity() {
                 val name = track.getString("name")
                 val artist = track.getJSONObject("primaryArtists").getString("name")
                 val img = track.getJSONArray("image").getJSONObject(2).getString("link")
-                val url = track.getJSONArray("downloadUrl").getJSONObject(4).getString("link") // 320kbps
+                val url = track.getJSONArray("downloadUrl").getJSONObject(4).getString("link")
 
                 withContext(Dispatchers.Main) {
                     loader.visibility = View.GONE
                     albumArt.visibility = View.VISIBLE
                     albumArt.load(img) {
-                        transformations(RoundedCornersTransformation(40f))
+                        transformations(RoundedCornersTransformation(30f))
                     }
                     songInfo.text = "$name\n$artist"
                     play(url)
@@ -163,7 +154,7 @@ class MainActivity : AppCompatActivity() {
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
                     loader.visibility = View.GONE
-                    Toast.makeText(this@MainActivity, "Error en HQ", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this@MainActivity, "Error de red HQ", Toast.LENGTH_SHORT).show()
                 }
             }
         }
@@ -178,7 +169,5 @@ class MainActivity : AppCompatActivity() {
     override fun onDestroy() {
         super.onDestroy()
         player?.release()
-    }
-}ayer?.release()
     }
 }
