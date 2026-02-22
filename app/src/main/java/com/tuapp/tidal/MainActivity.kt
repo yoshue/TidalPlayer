@@ -170,4 +170,6 @@ class MainActivity : AppCompatActivity() {
         super.onDestroy()
         player?.release()
     }
+}ayer?.release()
+    }
 }
