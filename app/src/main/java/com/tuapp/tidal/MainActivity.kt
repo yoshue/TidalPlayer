@@ -34,11 +34,11 @@ class MainActivity : AppCompatActivity() {
         }
 
         val searchInput = EditText(this).apply { 
-            hint = "Nombre de canción..." 
+            hint = "Escribe canción o artista..." 
             setSingleLine(true)
         }
         val searchButton = Button(this).apply { text = "BUSCAR Y REPRODUCIR" }
-        val statusText = TextView(this).apply { text = "Estado: Esperando búsqueda" }
+        val statusText = TextView(this).apply { text = "Listo para buscar" }
 
         layout.addView(searchInput)
         layout.addView(searchButton)
@@ -50,7 +50,7 @@ class MainActivity : AppCompatActivity() {
         searchButton.setOnClickListener {
             val query = searchInput.text.toString()
             if (query.isNotEmpty()) {
-                statusText.text = "Buscando en Tidal..."
+                statusText.text = "Conectando con el servidor..."
                 
                 lifecycleScope.launch {
                     try {
@@ -58,8 +58,7 @@ class MainActivity : AppCompatActivity() {
                         val track = response.items.firstOrNull()
                         
                         if (track != null) {
-                            statusText.text = "Reproduciendo: ${track.title}"
-                            // Usamos el ID para generar la URL de descarga
+                            statusText.text = "Cargando: ${track.title}"
                             val streamUrl = "https://clm-6.tidal.squid.wtf/api/download?id=${track.id}&quality=LOSSLESS"
                             
                             val mediaItem = MediaItem.fromUri(streamUrl)
@@ -67,11 +66,11 @@ class MainActivity : AppCompatActivity() {
                             player?.prepare()
                             player?.play()
                         } else {
-                            statusText.text = "No se encontraron resultados para: $query"
+                            statusText.text = "Sin resultados para: $query"
                         }
                     } catch (e: Exception) {
-                        // Aquí nos mostrará el error real en la pantalla del móvil
-                        statusText.text = "Error Técnico: ${e.localizedMessage}"
+                        // DETECTOR DE ERRORES: Esto nos dirá qué pasa realmente
+                        statusText.text = "ERROR REAL: ${e.javaClass.simpleName} - ${e.message}"
                         e.printStackTrace()
                     }
                 }
