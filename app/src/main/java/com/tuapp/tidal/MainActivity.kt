@@ -16,6 +16,8 @@ import retrofit2.converter.gson.GsonConverterFactory
 class MainActivity : AppCompatActivity() {
 
     private var player: ExoPlayer? = null
+    
+    // Configuramos la conexión a la API
     private val apiService by lazy {
         Retrofit.Builder()
             .baseUrl("https://tidal.squid.wtf/")
@@ -27,6 +29,7 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
+        // Diseño simple por código
         val layout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(50, 50, 50, 50)
@@ -34,7 +37,7 @@ class MainActivity : AppCompatActivity() {
 
         val searchInput = EditText(this).apply { hint = "Nombre de canción..." }
         val searchButton = Button(this).apply { text = "BUSCAR Y REPRODUCIR" }
-        val statusText = TextView(this).apply { text = "Listo" }
+        val statusText = TextView(this).apply { text = "Estado: Listo" }
 
         layout.addView(searchInput)
         layout.addView(searchButton)
@@ -46,22 +49,27 @@ class MainActivity : AppCompatActivity() {
         searchButton.setOnClickListener {
             val query = searchInput.text.toString()
             if (query.isNotEmpty()) {
-                statusText.text = "Buscando..."
+                statusText.text = "Buscando en Tidal..."
+                
+                // Usamos lifecycleScope para no bloquear el teléfono mientras busca
                 lifecycleScope.launch {
                     try {
                         val response = apiService.searchTracks(query)
-                        val firstTrack = response.items.firstOrNull()
-                        if (firstTrack != null) {
-                            statusText.text = "Sonando: ${firstTrack.title}"
-                            val streamUrl = "https://clm-6.tidal.squid.wtf/api/download?id=${firstTrack.id}&quality=LOSSLESS"
-                            player?.setMediaItem(MediaItem.fromUri(streamUrl))
+                        val track = response.items.firstOrNull()
+                        
+                        if (track != null) {
+                            statusText.text = "Sonando: ${track.title}"
+                            val streamUrl = "https://clm-6.tidal.squid.wtf/api/download?id=${track.id}&quality=LOSSLESS"
+                            
+                            val mediaItem = MediaItem.fromUri(streamUrl)
+                            player?.setMediaItem(mediaItem)
                             player?.prepare()
                             player?.play()
                         } else {
-                            statusText.text = "Sin resultados"
+                            statusText.text = "No se encontró la canción"
                         }
                     } catch (e: Exception) {
-                        statusText.text = "Error de red"
+                        statusText.text = "Error: Verifica tu conexión"
                     }
                 }
             }
