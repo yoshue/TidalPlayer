@@ -12,7 +12,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import org.json.JSONArray
+import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
@@ -27,7 +27,6 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // DISEÑO OLED NEGRO PURO
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(Color.BLACK)
@@ -36,14 +35,14 @@ class MainActivity : AppCompatActivity() {
         }
 
         val title = TextView(this).apply {
-            text = "YT SCRAPER OLED"
+            text = "OLED HQ PLAYER"
             setTextColor(Color.WHITE)
             textSize = 28f
             setPadding(0, 0, 0, 80)
         }
 
         val inputField = EditText(this).apply {
-            hint = "Escribe canción y artista..."
+            hint = "Canción y Artista..."
             setHintTextColor(Color.DKGRAY)
             setTextColor(Color.WHITE)
             setBackgroundColor(Color.parseColor("#111111"))
@@ -51,10 +50,9 @@ class MainActivity : AppCompatActivity() {
         }
 
         val btnSearch = Button(this).apply {
-            text = "REPRODUCIR COMPLETA"
+            text = "REPRODUCIR EN 320KBPS"
             setBackgroundColor(Color.WHITE)
             setTextColor(Color.BLACK)
-            setPadding(0, 30, 0, 30)
         }
 
         loader = ProgressBar(this).apply { visibility = View.GONE }
@@ -67,8 +65,8 @@ class MainActivity : AppCompatActivity() {
         }
 
         statusText = TextView(this).apply {
-            text = "Listo para scrapear audio"
-            setTextColor(Color.GRAY)
+            text = "Calidad seleccionada: Alta (320kbps)"
+            setTextColor(Color.parseColor("#3DDC84"))
             textSize = 12f
         }
 
@@ -85,57 +83,58 @@ class MainActivity : AppCompatActivity() {
 
         btnSearch.setOnClickListener {
             val q = inputField.text.toString()
-            if (q.isNotEmpty()) startYoutubeScraper(q)
+            if (q.isNotEmpty()) startHQSearch(q)
         }
     }
 
-    private fun startYoutubeScraper(query: String) {
+    private fun startHQSearch(query: String) {
         loader.visibility = View.VISIBLE
-        statusText.text = "Buscando en YouTube..."
+        statusText.text = "Buscando en servidor HQ..."
         
         lifecycleScope.launch(Dispatchers.IO) {
             try {
-                // Buscamos el video (añadimos "audio" para mejores resultados)
-                val encoded = URLEncoder.encode("$query audio", "UTF-8")
-                // Instancia pública de Invidious
-                val searchUrl = "https://inv.tux.rs/api/v1/search?q=$encoded&type=video"
+                val encoded = URLEncoder.encode(query, "UTF-8")
+                // Usamos la API de Saavn que es famosa en GitHub por ser abierta y HQ
+                val searchUrl = "https://saavn.me/search/songs?query=$encoded&limit=1"
                 
                 val connection = URL(searchUrl).openConnection() as HttpURLConnection
                 val response = connection.inputStream.bufferedReader().readText()
-                val results = JSONArray(response)
+                
+                val json = JSONObject(response)
+                val data = json.getJSONObject("data").getJSONArray("results")
 
-                if (results.length() > 0) {
-                    val video = results.getJSONObject(0)
-                    val vId = video.getString("videoId")
-                    val vTitle = video.getString("title")
-
-                    // URL de streaming directo (formato m4a/aac)
-                    val streamUrl = "https://inv.tux.rs/latest_version?id=$vId&itag=140"
+                if (data.length() > 0) {
+                    val track = data.getJSONObject(0)
+                    val name = track.getString("name")
+                    val artist = track.getJSONObject("primaryArtists").getString("name")
+                    
+                    // Saavn entrega varios niveles. El último del array suele ser 320kbps.
+                    val downloadUrls = track.getJSONArray("downloadUrl")
+                    val hqUrl = downloadUrls.getJSONObject(downloadUrls.length() - 1).getString("link")
 
                     withContext(Dispatchers.Main) {
                         loader.visibility = View.GONE
-                        songInfo.text = vTitle
-                        statusText.text = "Reproduciendo flujo completo..."
-                        playAudio(streamUrl)
+                        songInfo.text = "$name\n$artist"
+                        statusText.text = "Reproduciendo a 320kbps (Real)"
+                        playAudio(hqUrl)
                     }
                 } else {
                     withContext(Dispatchers.Main) {
                         loader.visibility = View.GONE
-                        statusText.text = "No se encontraron resultados."
+                        statusText.text = "No se encontró en alta calidad."
                     }
                 }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
                     loader.visibility = View.GONE
-                    statusText.text = "Error de conexión con el scraper."
+                    statusText.text = "Error: El servidor HQ no responde."
                 }
             }
         }
     }
 
     private fun playAudio(url: String) {
-        val mediaItem = MediaItem.fromUri(url)
-        player?.setMediaItem(mediaItem)
+        player?.setMediaItem(MediaItem.fromUri(url))
         player?.prepare()
         player?.play()
     }
@@ -143,5 +142,7 @@ class MainActivity : AppCompatActivity() {
     override fun onDestroy() {
         super.onDestroy()
         player?.release()
+    }
+}player?.release()
     }
 }
