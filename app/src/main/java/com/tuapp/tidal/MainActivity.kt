@@ -17,7 +17,6 @@ class MainActivity : AppCompatActivity() {
 
     private var player: ExoPlayer? = null
     
-    // Configuramos la conexión a la API
     private val apiService by lazy {
         Retrofit.Builder()
             .baseUrl("https://tidal.squid.wtf/")
@@ -29,7 +28,6 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
-        // Diseño simple por código
         val layout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(50, 50, 50, 50)
@@ -51,7 +49,6 @@ class MainActivity : AppCompatActivity() {
             if (query.isNotEmpty()) {
                 statusText.text = "Buscando en Tidal..."
                 
-                // Usamos lifecycleScope para no bloquear el teléfono mientras busca
                 lifecycleScope.launch {
                     try {
                         val response = apiService.searchTracks(query)
