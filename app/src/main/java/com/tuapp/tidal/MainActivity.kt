@@ -1,7 +1,10 @@
 package com.tuapp.tidal
 
 import android.os.Bundle
-import android.widget.*
+import android.widget.Button
+import android.widget.EditText
+import android.widget.LinearLayout
+import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import androidx.media3.common.MediaItem
@@ -29,9 +32,9 @@ class MainActivity : AppCompatActivity() {
             setPadding(50, 50, 50, 50)
         }
 
-        val searchInput = EditText(this).apply { hint = "Nombre de canción o artista..." }
+        val searchInput = EditText(this).apply { hint = "Nombre de canción..." }
         val searchButton = Button(this).apply { text = "BUSCAR Y REPRODUCIR" }
-        val statusText = TextView(this).apply { text = "Listo para buscar" }
+        val statusText = TextView(this).apply { text = "Listo" }
 
         layout.addView(searchInput)
         layout.addView(searchButton)
@@ -43,29 +46,22 @@ class MainActivity : AppCompatActivity() {
         searchButton.setOnClickListener {
             val query = searchInput.text.toString()
             if (query.isNotEmpty()) {
-                statusText.text = "Buscando: $query..."
-                
-                // Ejecutamos la búsqueda en segundo plano
+                statusText.text = "Buscando..."
                 lifecycleScope.launch {
                     try {
                         val response = apiService.searchTracks(query)
                         val firstTrack = response.items.firstOrNull()
-
                         if (firstTrack != null) {
-                            statusText.text = "Reproduciendo: ${firstTrack.title} - ${firstTrack.artist.name}"
-                            
-                            // Construimos la URL de streaming usando el ID de la canción
+                            statusText.text = "Sonando: ${firstTrack.title}"
                             val streamUrl = "https://clm-6.tidal.squid.wtf/api/download?id=${firstTrack.id}&quality=LOSSLESS"
-                            
-                            val mediaItem = MediaItem.fromUri(streamUrl)
-                            player?.setMediaItem(mediaItem)
+                            player?.setMediaItem(MediaItem.fromUri(streamUrl))
                             player?.prepare()
                             player?.play()
                         } else {
-                            statusText.text = "No se encontraron resultados."
+                            statusText.text = "Sin resultados"
                         }
                     } catch (e: Exception) {
-                        statusText.text = "Error: ${e.message}"
+                        statusText.text = "Error de red"
                     }
                 }
             }
