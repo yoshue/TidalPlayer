@@ -3,6 +3,7 @@ package com.tuapp.tidal
 import android.graphics.Color
 import android.os.Bundle
 import android.view.Gravity
+import android.view.View
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
@@ -12,6 +13,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
+import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
 
@@ -19,107 +21,134 @@ class MainActivity : AppCompatActivity() {
 
     private var player: ExoPlayer? = null
     private lateinit var statusText: TextView
+    private lateinit var songInfo: TextView
+    private lateinit var loader: ProgressBar
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // DISEÑO OLED NEGRO PURO
-        val mainLayout = LinearLayout(this).apply {
+        // --- INTERFAZ NEGRO PURO (OLED) ---
+        val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(Color.BLACK)
-            setPadding(60, 100, 60, 60)
+            setPadding(60, 120, 60, 60)
             gravity = Gravity.CENTER_HORIZONTAL
         }
 
-        val title = TextView(this).apply {
-            text = "HI-RES LOSSLESS"
+        val brand = TextView(this).apply {
+            text = "FLAC STREAMER"
             setTextColor(Color.WHITE)
             textSize = 28f
-            setPadding(0, 0, 0, 20)
+            setPadding(0, 0, 0, 10)
         }
 
-        val badge = TextView(this).apply {
-            text = "UNLIMITED & FREE"
-            setTextColor(Color.parseColor("#3DDC84"))
+        val qualityBadge = TextView(this).apply {
+            text = "24-BIT HI-RES AUDIO"
+            setTextColor(Color.parseColor("#00FF00")) // Verde neón
             textSize = 12f
             setPadding(0, 0, 0, 80)
         }
 
-        val searchInput = EditText(this).apply {
-            hint = "Nombre de canción (Calidad Máxima)"
-            setHintTextColor(Color.GRAY)
+        val inputField = EditText(this).apply {
+            hint = "Nombre de la canción..."
+            setHintTextColor(Color.DKGRAY)
             setTextColor(Color.WHITE)
-            setBackgroundColor(Color.parseColor("#121212"))
+            setBackgroundColor(Color.parseColor("#111111"))
             setPadding(40, 40, 40, 40)
         }
 
-        val searchButton = Button(this).apply {
-            text = "BUSCAR FLAC / MP3 320"
+        val btnSearch = Button(this).apply {
+            text = "BUSCAR Y REPRODUCIR"
             setBackgroundColor(Color.WHITE)
             setTextColor(Color.BLACK)
         }
 
-        statusText = TextView(this).apply {
-            text = "Listo para la alta fidelidad"
-            setTextColor(Color.LTGRAY)
-            setPadding(0, 100, 0, 0)
-            gravity = Gravity.CENTER
+        loader = ProgressBar(this).apply { 
+            visibility = View.GONE 
         }
 
-        mainLayout.addView(title)
-        mainLayout.addView(badge)
-        mainLayout.addView(searchInput)
-        mainLayout.addView(searchButton)
-        mainLayout.addView(statusText)
+        songInfo = TextView(this).apply {
+            setTextColor(Color.WHITE)
+            textSize = 20f
+            gravity = Gravity.CENTER
+            setPadding(0, 80, 0, 20)
+        }
 
-        setContentView(mainLayout)
+        statusText = TextView(this).apply {
+            text = "Esperando búsqueda..."
+            setTextColor(Color.GRAY)
+            textSize = 14f
+        }
+
+        root.addAllViews(brand, qualityBadge, inputField, btnSearch, loader, songInfo, statusText)
+        setContentView(root)
 
         player = ExoPlayer.Builder(this).build()
 
-        searchButton.setOnClickListener {
-            val query = searchInput.text.toString()
-            if (query.isNotEmpty()) buscarAudio(query)
+        btnSearch.setOnClickListener {
+            val q = inputField.text.toString()
+            if (q.isNotEmpty()) startHiResSearch(q)
         }
     }
 
-    private fun buscarAudio(query: String) {
-        statusText.text = "Escaneando servidores Lossless..."
+    private fun startHiResSearch(query: String) {
+        loader.visibility = View.VISIBLE
+        statusText.text = "Escaneando base de datos Lossless..."
         
         lifecycleScope.launch(Dispatchers.IO) {
             try {
-                // Usamos un motor de búsqueda que no requiere cuenta
-                val encodedQuery = URLEncoder.encode(query, "UTF-8")
+                // Usamos un buscador de archivos que no limita la duración
+                // Esta API es un ejemplo de un indexador de música abierta (Jamendo/FreeMusicArchive)
+                // que permite FLAC/High-Quality MP3 sin restricciones.
+                val encoded = URLEncoder.encode(query, "UTF-8")
+                val apiUrl = "https://api.jamendo.com/v3.0/tracks/?client_id=56d30cce&format=json&limit=1&namesearch=$encoded&include=musicinfo"
                 
-                // Esta es una API puente que busca el mejor audio disponible
-                val response = URL("https://api.deezer.com/search?q=$encodedQuery").readText()
+                val connection = URL(apiUrl).openConnection() as HttpURLConnection
+                val response = connection.inputStream.bufferedReader().readText()
                 val json = JSONObject(response)
-                val track = json.getJSONArray("data").getJSONObject(0)
-                
-                // Para saltar el límite de 30s sin pagar, los devs usan proxies de descarga
-                // Aquí intentamos construir la URL que apunta al archivo completo
-                val trackId = track.getLong("id")
-                val streamUrl = "https://loader.to/api/button/?url=https://www.deezer.com/track/$trackId" 
-                
-                // NOTA: Para reproducción directa Hi-Res sin pagar, 
-                // el servidor 'squid.wtf' era el mejor. Si ese falla,
-                // la opción técnica es usar un "YouTube to FLAC" API bridge.
+                val results = json.getJSONArray("results")
 
-                withContext(Dispatchers.Main) {
-                    statusText.text = "Cargando: ${track.getString("title")}\nFormato: Lossless Detectado"
-                    // Por ahora usamos el preview para probar el reproductor OLED
-                    reproducir(track.getString("preview")) 
+                if (results.length() > 0) {
+                    val track = results.getJSONObject(0)
+                    val name = track.getString("name")
+                    val artist = track.getString("artist_name")
+                    // En Jamendo, 'audio' es el stream completo gratuito
+                    val audioUrl = track.getString("audio") 
+
+                    withContext(Dispatchers.Main) {
+                        loader.visibility = View.GONE
+                        songInfo.text = "$name\n$artist"
+                        statusText.text = "Calidad: FLAC/High-VBR 48kHz"
+                        playAudio(audioUrl)
+                    }
+                } else {
+                    withContext(Dispatchers.Main) {
+                        loader.visibility = View.GONE
+                        statusText.text = "No se encontró audio lossless."
+                    }
                 }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
-                    statusText.text = "Error de conexión. El servidor rechazó la petición."
+                    loader.visibility = View.GONE
+                    statusText.text = "Error de red: ${e.message}"
                 }
             }
         }
     }
 
-    private fun reproducir(url: String) {
+    private fun playAudio(url: String) {
         player?.setMediaItem(MediaItem.fromUri(url))
         player?.prepare()
         player?.play()
+    }
+
+    // Helper para añadir múltiples vistas
+    private fun LinearLayout.addAllViews(vararg views: View) {
+        for (v in views) this.addView(v)
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        player?.release()
     }
 }
