@@ -2,6 +2,7 @@ package com.tuapp.tidal
 
 import android.graphics.Color
 import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -15,6 +16,7 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import coil.load
+import coil.transform.RoundedCornersTransformation
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -35,47 +37,54 @@ class MainActivity : AppCompatActivity() {
     private lateinit var seekBar: SeekBar
     private val handler = Handler(Looper.getMainLooper())
 
+    // LISTA DE MOTORES DE RESPALDO (Los más estables a Feb 2026)
+    private val apiEndpoints = arrayOf(
+        "https://pipedapi.lunar.icu",
+        "https://api.piped.victr.me",
+        "https://pipedapi.ducks.party"
+    )
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         System.setProperty("https.protocols", "TLSv1.2,TLSv1.3")
 
-        // Fondo Negro Profundo
+        // Fondo Negro de Estudio
         val root = RelativeLayout(this).apply { setBackgroundColor(Color.BLACK) }
 
-        // 1. Buscador Minimalista
-        val searchBox = LinearLayout(this).apply {
+        // 1. Buscador (Solo una línea sutil)
+        val searchLayout = LinearLayout(this).apply {
             id = View.generateViewId()
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(60, 100, 60, 40)
+            setPadding(60, 110, 60, 40)
             layoutParams = RelativeLayout.LayoutParams(-1, -2)
         }
 
         val input = EditText(this).apply {
             hint = "Escribe una canción..."
-            setHintTextColor(Color.parseColor("#333333"))
+            setHintTextColor(Color.parseColor("#444444"))
             setTextColor(Color.WHITE)
             setBackgroundColor(Color.TRANSPARENT)
-            textSize = 14f
+            textSize = 15f
             typeface = Typeface.create("sans-serif-light", Typeface.NORMAL)
             layoutParams = LinearLayout.LayoutParams(0, -2, 1f)
         }
 
         val searchIcon = ImageButton(this).apply {
             setImageResource(android.R.drawable.ic_menu_search)
-            setColorFilter(Color.GRAY)
+            setColorFilter(Color.WHITE)
             setBackgroundColor(Color.TRANSPARENT)
         }
-        searchBox.addView(input)
-        searchBox.addView(searchIcon)
+        searchLayout.addView(input)
+        searchLayout.addView(searchIcon)
 
-        // 2. Arte del Álbum (Studio Style)
+        // 2. Contenedor de la Carátula
         val content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
             val lp = RelativeLayout.LayoutParams(-1, -1)
-            lp.addRule(RelativeLayout.BELOW, searchBox.id)
-            lp.addRule(RelativeLayout.ABOVE, 3000)
+            lp.addRule(RelativeLayout.BELOW, searchLayout.id)
+            lp.addRule(RelativeLayout.ABOVE, 4000)
             layoutParams = lp
         }
 
@@ -87,15 +96,15 @@ class MainActivity : AppCompatActivity() {
 
         songTitle = TextView(this).apply {
             setTextColor(Color.WHITE)
-            textSize = 20f
+            textSize = 22f
             typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
-            setPadding(50, 60, 50, 5)
+            setPadding(60, 60, 60, 10)
             gravity = Gravity.CENTER
         }
 
         artistName = TextView(this).apply {
-            setTextColor(Color.GRAY)
-            textSize = 12f
+            setTextColor(Color.parseColor("#888888"))
+            textSize = 13f
             typeface = Typeface.create("sans-serif-light", Typeface.NORMAL)
             letterSpacing = 0.2f
             gravity = Gravity.CENTER
@@ -111,12 +120,12 @@ class MainActivity : AppCompatActivity() {
         content.addView(songTitle)
         content.addView(artistName)
 
-        // 3. Controles y SeekBar (Abajo)
+        // 3. Controles Inferiores (Estética Zen)
         val footer = LinearLayout(this).apply {
-            id = 3000
+            id = 4000
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
-            setPadding(80, 0, 80, 150)
+            setPadding(80, 0, 80, 160)
             val lp = RelativeLayout.LayoutParams(-1, -2)
             lp.addRule(RelativeLayout.ALIGN_PARENT_BOTTOM)
             layoutParams = lp
@@ -126,19 +135,18 @@ class MainActivity : AppCompatActivity() {
             layoutParams = LinearLayout.LayoutParams(-1, -2)
             progressDrawable.setColorFilter(Color.WHITE, android.graphics.PorterDuff.Mode.SRC_IN)
             thumb.setColorFilter(Color.WHITE, android.graphics.PorterDuff.Mode.SRC_IN)
-            setPadding(0, 40, 0, 40)
         }
 
         btnPlayPause = ImageButton(this).apply {
             setImageResource(android.R.drawable.ic_media_play)
             setBackgroundColor(Color.TRANSPARENT)
             setColorFilter(Color.WHITE)
-            scaleX = 1.8f
-            scaleY = 1.8f
+            scaleX = 2f
+            scaleY = 2f
         }
 
         statusText = TextView(this).apply {
-            setTextColor(Color.parseColor("#111111"))
+            setTextColor(Color.parseColor("#222222")) // Casi invisible
             textSize = 8f
             setPadding(0, 30, 0, 0)
         }
@@ -147,13 +155,13 @@ class MainActivity : AppCompatActivity() {
         footer.addView(btnPlayPause)
         footer.addView(statusText)
 
-        root.apply { addView(searchBox); addView(content); addView(footer) }
+        root.addView(searchLayout); root.addView(content); root.addView(footer)
         setContentView(root)
         setupPlayer()
 
         searchIcon.setOnClickListener {
             val q = input.text.toString()
-            if (q.isNotEmpty()) searchMusicYT(q)
+            if (q.isNotEmpty()) startSearchRotation(q)
         }
 
         btnPlayPause.setOnClickListener {
@@ -170,7 +178,6 @@ class MainActivity : AppCompatActivity() {
                 }
             })
         }
-        
         seekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(s: SeekBar?, p: Int, fromUser: Boolean) {
                 if (fromUser) player?.seekTo(p.toLong())
@@ -188,53 +195,52 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun searchMusicYT(query: String) {
+    private fun startSearchRotation(query: String) {
         loader.visibility = View.VISIBLE
-        statusText.text = "SYNCING ENGINE..."
+        albumArt.visibility = View.INVISIBLE
+        statusText.text = "BUSCANDO EN RED..."
         
         lifecycleScope.launch(Dispatchers.IO) {
-            try {
-                val q = URLEncoder.encode(query, "UTF-8")
-                // CAMBIAMOS A UNA INSTANCIA MÁS RÁPIDA (Piped.video es muy estable)
-                val searchUrl = URL("https://pipedapi.ducks.party/search?q=$q&filter=music_songs")
-                val conn = searchUrl.openConnection() as HttpURLConnection
-                conn.setRequestProperty("User-Agent", "Mozilla/5.0")
+            var found = false
+            for (base in apiEndpoints) {
+                if (found) break
+                try {
+                    val q = URLEncoder.encode(query, "UTF-8")
+                    val searchUrl = URL("$base/search?q=$q&filter=music_songs")
+                    val conn = searchUrl.openConnection() as HttpURLConnection
+                    conn.readTimeout = 5000
+                    conn.connectTimeout = 5000
 
-                if (conn.responseCode == 200) {
-                    val json = JSONObject(conn.inputStream.bufferedReader().readText())
-                    val items = json.getJSONArray("items")
-                    
-                    if (items.length() > 0) {
-                        val track = items.getJSONObject(0)
-                        val vId = track.getString("url").split("v=")[1]
-                        val title = track.getString("title")
-                        val artist = track.getString("uploaderName")
-                        val cover = track.getString("thumbnail")
-
-                        // Obtener stream directo
-                        val sUrl = URL("https://pipedapi.ducks.party/streams/$vId")
-                        val sConn = sUrl.openConnection() as HttpURLConnection
-                        val sJson = JSONObject(sConn.inputStream.bufferedReader().readText())
-                        val audio = sJson.getJSONArray("audioStreams").getJSONObject(0).getString("url")
-
-                        withContext(Dispatchers.Main) {
-                            loader.visibility = View.GONE
-                            albumArt.visibility = View.VISIBLE
-                            albumArt.load(cover)
-                            songTitle.text = title
-                            artistName.text = artist.uppercase()
-                            statusText.text = "ENGINE: $vId"
+                    if (conn.responseCode == 200) {
+                        val json = JSONObject(conn.inputStream.bufferedReader().readText())
+                        val items = json.getJSONArray("items")
+                        if (items.length() > 0) {
+                            val track = items.getJSONObject(0)
+                            val vId = track.getString("url").split("v=")[1]
                             
-                            player?.setMediaItem(MediaItem.fromUri(audio))
-                            player?.prepare()
-                            player?.play()
+                            // Obtener audio
+                            val sUrl = URL("$base/streams/$vId")
+                            val sJson = JSONObject(sUrl.readText())
+                            val audio = sJson.getJSONArray("audioStreams").getJSONObject(0).getString("url")
+                            
+                            withContext(Dispatchers.Main) {
+                                loader.visibility = View.GONE
+                                albumArt.visibility = View.VISIBLE
+                                albumArt.load(track.getString("thumbnail")) { transformations(RoundedCornersTransformation(10f)) }
+                                songTitle.text = track.getString("title")
+                                artistName.text = track.getString("uploaderName").uppercase()
+                                player?.setMediaItem(MediaItem.fromUri(audio))
+                                player?.prepare(); player?.play()
+                                found = true
+                            }
                         }
                     }
-                }
-            } catch (e: Exception) {
+                } catch (e: Exception) { continue }
+            }
+            if (!found) {
                 withContext(Dispatchers.Main) {
                     loader.visibility = View.GONE
-                    statusText.text = "TIMEOUT - REINTENTA"
+                    Toast.makeText(this@MainActivity, "Red saturada. Prueba otra búsqueda.", Toast.LENGTH_SHORT).show()
                 }
             }
         }
