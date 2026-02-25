@@ -1,9 +1,11 @@
 package com.tuapp.tidal
 
 import android.graphics.Color
+import android.graphics.Typeface
 import android.os.Bundle
 import android.view.Gravity
 import android.view.View
+import android.view.ViewGroup
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
@@ -11,6 +13,7 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import coil.load
+import coil.transform.BlurTransformation
 import coil.transform.RoundedCornersTransformation
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -23,80 +26,145 @@ import java.net.URLEncoder
 class MainActivity : AppCompatActivity() {
 
     private var player: ExoPlayer? = null
+    private lateinit var backgroundImage: ImageView
     private lateinit var albumArt: ImageView
     private lateinit var btnPlayPause: ImageButton
-    private lateinit var songInfo: TextView
+    private lateinit var songTitle: TextView
+    private lateinit var artistName: TextView
     private lateinit var loader: ProgressBar
     private lateinit var statusText: TextView
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
-        // Protocolos de seguridad reforzados para evitar bloqueos de red
+        // Protocolos de red para evitar el "Connection closed"
         System.setProperty("https.protocols", "TLSv1.2,TLSv1.3")
 
-        val root = LinearLayout(this).apply {
+        val root = RelativeLayout(this).apply { setBackgroundColor(Color.BLACK) }
+
+        // 1. Fondo Blur
+        backgroundImage = ImageView(this).apply {
+            layoutParams = RelativeLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+            scaleType = ImageView.ScaleType.CENTER_CROP
+            alpha = 0.35f 
+        }
+
+        // 2. Overlay Oscuro
+        val overlay = View(this).apply {
+            layoutParams = RelativeLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+            setBackgroundColor(Color.argb(190, 0, 0, 0))
+        }
+
+        // 3. Buscador Superior
+        val searchBox = LinearLayout(this).apply {
+            id = View.generateViewId()
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(60, 90, 60, 40)
+            layoutParams = RelativeLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+        }
+
+        val searchInput = EditText(this).apply {
+            hint = "Buscar en YouTube Music..."
+            setHintTextColor(Color.parseColor("#444444"))
+            setTextColor(Color.WHITE)
+            setBackgroundColor(Color.TRANSPARENT)
+            textSize = 15f
+            typeface = Typeface.create("sans-serif-light", Typeface.NORMAL)
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        }
+
+        val searchIcon = ImageButton(this).apply {
+            setImageResource(android.R.drawable.ic_menu_search)
+            setColorFilter(Color.WHITE)
+            setBackgroundColor(Color.TRANSPARENT)
+        }
+        searchBox.addView(searchInput)
+        searchBox.addView(searchIcon)
+
+        // 4. Arte y Textos
+        val mainUI = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.BLACK)
-            setPadding(60, 80, 60, 60)
-            gravity = Gravity.CENTER_HORIZONTAL
-        }
-
-        val searchBar = EditText(this).apply {
-            hint = "Escribe canción y artista..."
-            setHintTextColor(Color.GRAY)
-            setTextColor(Color.WHITE)
-            setBackgroundColor(Color.parseColor("#121212"))
-            setPadding(40, 40, 40, 40)
-        }
-
-        val btnSearch = Button(this).apply {
-            text = "REPRODUCIR (SERVIDOR 2026)"
-            setTextColor(Color.WHITE)
-            setBackgroundColor(Color.parseColor("#00E5FF"))
+            gravity = Gravity.CENTER
+            val params = RelativeLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+            params.addRule(RelativeLayout.BELOW, searchBox.id)
+            params.addRule(RelativeLayout.ABOVE, 1005)
+            layoutParams = params
         }
 
         albumArt = ImageView(this).apply {
-            layoutParams = LinearLayout.LayoutParams(800, 800).apply { setMargins(0, 50, 0, 30) }
-            visibility = View.GONE
+            layoutParams = LinearLayout.LayoutParams(820, 820)
+            visibility = View.INVISIBLE
         }
 
-        songInfo = TextView(this).apply {
+        songTitle = TextView(this).apply {
             setTextColor(Color.WHITE)
-            textSize = 18f
+            textSize = 21f
+            typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+            setPadding(50, 60, 50, 5)
             gravity = Gravity.CENTER
         }
 
-        statusText = TextView(this).apply {
-            text = "Estado: Conexión Segura"
-            setTextColor(Color.CYAN)
-            textSize = 11f
+        artistName = TextView(this).apply {
+            setTextColor(Color.GRAY)
+            textSize = 13f
+            typeface = Typeface.create("sans-serif-light", Typeface.NORMAL)
+            letterSpacing = 0.2f
+            gravity = Gravity.CENTER
         }
 
-        loader = ProgressBar(this).apply { visibility = View.GONE }
+        loader = ProgressBar(this).apply { 
+            visibility = View.GONE 
+            indeterminateDrawable.setColorFilter(Color.WHITE, android.graphics.PorterDuff.Mode.SRC_IN)
+        }
+
+        mainUI.addView(albumArt)
+        mainUI.addView(loader)
+        mainUI.addView(songTitle)
+        mainUI.addView(artistName)
+
+        // 5. Controles
+        val footer = LinearLayout(this).apply {
+            id = 1005
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setPadding(0, 0, 0, 140)
+            val params = RelativeLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+            params.addRule(RelativeLayout.ALIGN_PARENT_BOTTOM)
+            layoutParams = params
+        }
 
         btnPlayPause = ImageButton(this).apply {
             setImageResource(android.R.drawable.ic_media_play)
             setBackgroundColor(Color.TRANSPARENT)
             setColorFilter(Color.WHITE)
-            scaleX = 2.5f
-            scaleY = 2.5f
+            scaleX = 2.2f
+            scaleY = 2.2f
         }
 
-        root.addView(searchBar)
-        root.addView(btnSearch)
-        root.addView(albumArt)
-        root.addView(loader)
-        root.addView(songInfo)
-        root.addView(statusText)
-        root.addView(btnPlayPause)
+        statusText = TextView(this).apply {
+            setTextColor(Color.parseColor("#444444"))
+            textSize = 9f
+            setPadding(0, 40, 0, 0)
+        }
+
+        footer.addView(btnPlayPause)
+        footer.addView(statusText)
+
+        root.apply {
+            addView(backgroundImage)
+            addView(overlay)
+            addView(searchBox)
+            addView(mainUI)
+            addView(footer)
+        }
 
         setContentView(root)
         setupPlayer()
 
-        btnSearch.setOnClickListener {
-            val q = searchBar.text.toString()
-            if (q.isNotEmpty()) fetchMusicAntiBlock(q)
+        searchIcon.setOnClickListener {
+            val q = searchInput.text.toString()
+            if (q.isNotEmpty()) fetchFromYouTube(q)
         }
 
         btnPlayPause.setOnClickListener {
@@ -114,75 +182,57 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun fetchMusicAntiBlock(query: String) {
+    private fun fetchFromYouTube(query: String) {
         loader.visibility = View.VISIBLE
-        statusText.text = "Saltando bloqueos de red..."
+        statusText.text = "BUSCANDO EN YOUTUBE ENGINE..."
         
         lifecycleScope.launch(Dispatchers.IO) {
-            var connection: HttpURLConnection? = null
             try {
                 val encoded = URLEncoder.encode(query, "UTF-8")
-                
-                // USAMOS UN ESPEJO DISTINTO QUE NO USA VERCEL
-                val url = URL("https://saavn.me/api/search/songs?query=$encoded")
-                
-                connection = url.openConnection() as HttpURLConnection
-                connection.apply {
-                    connectTimeout = 15000
-                    readTimeout = 15000
-                    // IMPORTANTE: User-Agent de navegador real para que no nos detecten como bot
-                    setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-                    setRequestProperty("Accept", "application/json")
-                }
+                // MOTOR DE YOUTUBE (Instancia Invidious/Piped)
+                val searchUrl = URL("https://pipedapi.kavin.rocks/search?q=$encoded&filter=music_songs")
+                val conn = searchUrl.openConnection() as HttpURLConnection
+                conn.setRequestProperty("User-Agent", "Mozilla/5.0")
 
-                if (connection.responseCode == 200) {
-                    val text = connection.inputStream.bufferedReader().readText()
+                if (conn.responseCode == 200) {
+                    val json = JSONObject(conn.inputStream.bufferedReader().readText())
+                    val items = json.getJSONArray("items")
                     
-                    if (!text.trim().startsWith("{")) throw Exception("Servidor saturado. Intenta en 10 segundos.")
+                    if (items.length() > 0) {
+                        val track = items.getJSONObject(0)
+                        val videoId = track.getString("url").split("v=")[1]
+                        val title = track.getString("title")
+                        val uploader = track.getString("uploaderName")
+                        val thumbnail = track.getString("thumbnail")
 
-                    val json = JSONObject(text)
-                    val data = json.optJSONObject("data")
-                    val results = data?.optJSONArray("results") ?: json.optJSONArray("data")
-
-                    if (results != null && results.length() > 0) {
-                        val track = results.getJSONObject(0)
-                        val title = track.getString("name").replace("&quot;", "\"")
-                        
-                        // Extracción de artista compatible con múltiples versiones de API
-                        val artist = try {
-                            track.getJSONObject("artists").getJSONArray("primary").getJSONObject(0).getString("name")
-                        } catch (e: Exception) { "Artista" }
-                        
-                        val dUrl = track.getJSONArray("downloadUrl")
-                        val streamUrl = dUrl.getJSONObject(dUrl.length() - 1).getString("url")
-                        
-                        val img = track.getJSONArray("image")
-                        val cover = img.getJSONObject(img.length() - 1).getString("url")
+                        // URL de audio directa de YouTube
+                        val streamUrl = "https://pipedapi.kavin.rocks/streams/$videoId"
+                        val streamConn = URL(streamUrl).openConnection() as HttpURLConnection
+                        val streamJson = JSONObject(streamConn.inputStream.bufferedReader().readText())
+                        val audioUrl = streamJson.getJSONArray("audioStreams").getJSONObject(0).getString("url")
 
                         withContext(Dispatchers.Main) {
                             loader.visibility = View.GONE
                             albumArt.visibility = View.VISIBLE
-                            albumArt.load(cover) { transformations(RoundedCornersTransformation(40f)) }
-                            songInfo.text = "$title\n$artist"
-                            statusText.text = "¡CONECTADO! Reproduciendo HQ"
                             
-                            player?.setMediaItem(MediaItem.fromUri(streamUrl))
+                            backgroundImage.load(thumbnail) { transformations(BlurTransformation(this@MainActivity, 25, 3)) }
+                            albumArt.load(thumbnail) { transformations(RoundedCornersTransformation(30f)) }
+                            
+                            songTitle.text = title
+                            artistName.text = uploader.uppercase()
+                            statusText.text = "YT ENGINE: ACTIVE STREAM"
+                            
+                            player?.setMediaItem(MediaItem.fromUri(audioUrl))
                             player?.prepare()
                             player?.play()
                         }
-                    } else {
-                        throw Exception("No se encontró la canción.")
                     }
-                } else {
-                    throw Exception("Error de conexión: ${connection.responseCode}")
                 }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
                     loader.visibility = View.GONE
-                    statusText.text = "Fallo: ${e.message}"
+                    statusText.text = "ERROR: PRUEBA OTRA BÚSQUEDA"
                 }
-            } finally {
-                connection?.disconnect()
             }
         }
     }
