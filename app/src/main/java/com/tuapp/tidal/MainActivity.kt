@@ -1,9 +1,6 @@
 package com.tuapp.tidal
 
-import android.content.Context
 import android.graphics.Color
-import android.net.ConnectivityManager
-import android.net.NetworkCapabilities
 import android.os.Bundle
 import android.view.Gravity
 import android.view.View
@@ -43,7 +40,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         val searchBar = EditText(this).apply {
-            hint = "Escribe canción..."
+            hint = "Prueba iTunes (30 seg)..."
             setHintTextColor(Color.GRAY)
             setTextColor(Color.WHITE)
             setBackgroundColor(Color.parseColor("#121212"))
@@ -51,7 +48,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         val btnSearch = Button(this).apply {
-            text = "BUSCAR HQ"
+            text = "TEST DE CONEXIÓN"
             setTextColor(Color.WHITE)
             setBackgroundColor(Color.TRANSPARENT)
         }
@@ -68,8 +65,8 @@ class MainActivity : AppCompatActivity() {
         }
 
         statusText = TextView(this).apply {
-            text = "320kbps Mode"
-            setTextColor(Color.parseColor("#1DB954"))
+            text = "API: iTunes (Estable)"
+            setTextColor(Color.YELLOW)
             textSize = 11f
             setPadding(0, 0, 0, 60)
         }
@@ -97,7 +94,7 @@ class MainActivity : AppCompatActivity() {
 
         btnSearch.setOnClickListener {
             val q = searchBar.text.toString()
-            if (q.isNotEmpty()) performSearch(q)
+            if (q.isNotEmpty()) testiTunesApi(q)
         }
 
         btnPlayPause.setOnClickListener {
@@ -115,43 +112,52 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun performSearch(query: String) {
+    private fun testiTunesApi(query: String) {
         loader.visibility = View.VISIBLE
-        statusText.text = "Conectando..."
+        statusText.text = "Probando red con iTunes..."
         
         lifecycleScope.launch(Dispatchers.IO) {
             try {
                 val encoded = URLEncoder.encode(query, "UTF-8")
-                val url = URL("https://saavn.dev/api/search/songs?query=$encoded")
+                // URL oficial de iTunes Search
+                val url = URL("https://itunes.apple.com/search?term=$encoded&limit=1&entity=song")
                 val conn = url.openConnection() as HttpURLConnection
                 conn.connectTimeout = 15000
 
-                val response = conn.inputStream.bufferedReader().readText()
-                val json = JSONObject(response)
-                val results = json.getJSONObject("data").getJSONArray("results")
+                if (conn.responseCode == 200) {
+                    val response = conn.inputStream.bufferedReader().readText()
+                    val json = JSONObject(response)
+                    val results = json.getJSONArray("results")
 
-                if (results.length() > 0) {
-                    val track = results.getJSONObject(0)
-                    val title = track.getString("name").replace("&quot;", "\"")
-                    val artist = track.getJSONObject("artists").getJSONArray("primary").getJSONObject(0).getString("name")
-                    val hqUrl = track.getJSONArray("downloadUrl").getJSONObject(4).getString("url")
-                    val cover = track.getJSONArray("image").getJSONObject(2).getString("url")
+                    if (results.length() > 0) {
+                        val track = results.getJSONObject(0)
+                        val title = track.getString("trackName")
+                        val artist = track.getString("artistName")
+                        val previewUrl = track.getString("previewUrl") // Fragmento de 30 seg
+                        val cover = track.getString("artworkUrl100").replace("100x100", "600x600")
 
-                    withContext(Dispatchers.Main) {
-                        loader.visibility = View.GONE
-                        albumArt.visibility = View.VISIBLE
-                        albumArt.load(cover) { transformations(RoundedCornersTransformation(40f)) }
-                        songInfo.text = "$title\n$artist"
-                        statusText.text = "Reproduciendo a 320kbps"
-                        player?.setMediaItem(MediaItem.fromUri(hqUrl))
-                        player?.prepare()
-                        player?.play()
+                        withContext(Dispatchers.Main) {
+                            loader.visibility = View.GONE
+                            albumArt.visibility = View.VISIBLE
+                            albumArt.load(cover) { transformations(RoundedCornersTransformation(40f)) }
+                            songInfo.text = "$title\n$artist"
+                            statusText.text = "¡CONEXIÓN EXITOSA! (Preview)"
+                            
+                            player?.setMediaItem(MediaItem.fromUri(previewUrl))
+                            player?.prepare()
+                            player?.play()
+                        }
+                    } else {
+                        throw Exception("Sin resultados")
                     }
+                } else {
+                    throw Exception("Error HTTP: ${conn.responseCode}")
                 }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
                     loader.visibility = View.GONE
-                    statusText.text = "Error: Verifica tus datos"
+                    statusText.text = "Fallo: ${e.message}"
+                    Toast.makeText(this@MainActivity, "Revisa tus datos", Toast.LENGTH_LONG).show()
                 }
             }
         }
