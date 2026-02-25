@@ -28,41 +28,22 @@ class MainActivity : AppCompatActivity() {
     private lateinit var songInfo: TextView
     private lateinit var loader: ProgressBar
     private lateinit var statusText: TextView
-    private lateinit var sourceSpinner: Spinner
-    
-    // Lista de servidores activos a Feb 2026
-    private val serverNames = arrayOf("Servidor Alpha (Principal)", "Servidor Beta (Estable)", "Servidor Gamma (Alternativo)")
-    private val serverUrls = arrayOf(
-        "https://saavn.dev/api/search/songs?query=",
-        "https://saavn.me/search/songs?query=",
-        "https://jiosaavn-api.vercel.app/search/songs?query="
-    )
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        
+        // Protocolos de seguridad reforzados para evitar bloqueos de red
         System.setProperty("https.protocols", "TLSv1.2,TLSv1.3")
 
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(Color.BLACK)
-            setPadding(60, 40, 60, 60)
+            setPadding(60, 80, 60, 60)
             gravity = Gravity.CENTER_HORIZONTAL
         }
 
-        // Selector de Fuente
-        val label = TextView(this).apply {
-            text = "SELECCIONAR FUENTE:"
-            setTextColor(Color.GRAY)
-            textSize = 12f
-        }
-        
-        sourceSpinner = Spinner(this).apply {
-            adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_dropdown_item, serverNames)
-            setBackgroundColor(Color.DKGRAY)
-        }
-
         val searchBar = EditText(this).apply {
-            hint = "Canción o Artista..."
+            hint = "Escribe canción y artista..."
             setHintTextColor(Color.GRAY)
             setTextColor(Color.WHITE)
             setBackgroundColor(Color.parseColor("#121212"))
@@ -70,24 +51,24 @@ class MainActivity : AppCompatActivity() {
         }
 
         val btnSearch = Button(this).apply {
-            text = "REPRODUCIR AHORA"
+            text = "REPRODUCIR (SERVIDOR 2026)"
             setTextColor(Color.WHITE)
             setBackgroundColor(Color.parseColor("#00E5FF"))
         }
 
         albumArt = ImageView(this).apply {
-            layoutParams = LinearLayout.LayoutParams(800, 800).apply { setMargins(0, 40, 0, 20) }
+            layoutParams = LinearLayout.LayoutParams(800, 800).apply { setMargins(0, 50, 0, 30) }
             visibility = View.GONE
         }
 
         songInfo = TextView(this).apply {
             setTextColor(Color.WHITE)
-            textSize = 16f
+            textSize = 18f
             gravity = Gravity.CENTER
         }
 
         statusText = TextView(this).apply {
-            text = "Estado: En espera"
+            text = "Estado: Conexión Segura"
             setTextColor(Color.CYAN)
             textSize = 11f
         }
@@ -98,12 +79,10 @@ class MainActivity : AppCompatActivity() {
             setImageResource(android.R.drawable.ic_media_play)
             setBackgroundColor(Color.TRANSPARENT)
             setColorFilter(Color.WHITE)
-            scaleX = 2f
-            scaleY = 2f
+            scaleX = 2.5f
+            scaleY = 2.5f
         }
 
-        root.addView(label)
-        root.addView(sourceSpinner)
         root.addView(searchBar)
         root.addView(btnSearch)
         root.addView(albumArt)
@@ -117,7 +96,7 @@ class MainActivity : AppCompatActivity() {
 
         btnSearch.setOnClickListener {
             val q = searchBar.text.toString()
-            if (q.isNotEmpty()) fetchMusic(q)
+            if (q.isNotEmpty()) fetchMusicAntiBlock(q)
         }
 
         btnPlayPause.setOnClickListener {
@@ -135,67 +114,72 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun fetchMusic(query: String) {
-        val serverIndex = sourceSpinner.selectedItemPosition
+    private fun fetchMusicAntiBlock(query: String) {
         loader.visibility = View.VISIBLE
-        statusText.text = "Conectando a ${serverNames[serverIndex]}..."
+        statusText.text = "Saltando bloqueos de red..."
         
         lifecycleScope.launch(Dispatchers.IO) {
             var connection: HttpURLConnection? = null
             try {
                 val encoded = URLEncoder.encode(query, "UTF-8")
-                val url = URL(serverUrls[serverIndex] + encoded)
+                
+                // USAMOS UN ESPEJO DISTINTO QUE NO USA VERCEL
+                val url = URL("https://saavn.me/api/search/songs?query=$encoded")
                 
                 connection = url.openConnection() as HttpURLConnection
                 connection.apply {
-                    connectTimeout = 10000
-                    readTimeout = 10000
-                    setRequestProperty("User-Agent", "Mozilla/5.0")
+                    connectTimeout = 15000
+                    readTimeout = 15000
+                    // IMPORTANTE: User-Agent de navegador real para que no nos detecten como bot
+                    setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
                     setRequestProperty("Accept", "application/json")
                 }
 
                 if (connection.responseCode == 200) {
                     val text = connection.inputStream.bufferedReader().readText()
                     
-                    if (!text.trim().startsWith("{")) throw Exception("Servidor saturado (envió HTML). Prueba otra fuente.")
+                    if (!text.trim().startsWith("{")) throw Exception("Servidor saturado. Intenta en 10 segundos.")
 
                     val json = JSONObject(text)
-                    val dataObj = json.optJSONObject("data")
-                    val results = dataObj?.optJSONArray("results") ?: json.optJSONArray("data") ?: throw Exception("Formato no reconocido")
+                    val data = json.optJSONObject("data")
+                    val results = data?.optJSONArray("results") ?: json.optJSONArray("data")
 
-                    if (results.length() > 0) {
+                    if (results != null && results.length() > 0) {
                         val track = results.getJSONObject(0)
                         val title = track.getString("name").replace("&quot;", "\"")
-                        val artist = track.optJSONObject("artists")?.optJSONArray("primary")?.optJSONObject(0)?.optString("name") ?: "Desconocido"
                         
-                        val dUrls = track.getJSONArray("downloadUrl")
-                        val streamUrl = dUrls.getJSONObject(dUrls.length() - 1).getString("url")
+                        // Extracción de artista compatible con múltiples versiones de API
+                        val artist = try {
+                            track.getJSONObject("artists").getJSONArray("primary").getJSONObject(0).getString("name")
+                        } catch (e: Exception) { "Artista" }
                         
-                        val imgs = track.getJSONArray("image")
-                        val cover = imgs.getJSONObject(imgs.length() - 1).getString("url")
+                        val dUrl = track.getJSONArray("downloadUrl")
+                        val streamUrl = dUrl.getJSONObject(dUrl.length() - 1).getString("url")
+                        
+                        val img = track.getJSONArray("image")
+                        val cover = img.getJSONObject(img.length() - 1).getString("url")
 
                         withContext(Dispatchers.Main) {
                             loader.visibility = View.GONE
                             albumArt.visibility = View.VISIBLE
                             albumArt.load(cover) { transformations(RoundedCornersTransformation(40f)) }
                             songInfo.text = "$title\n$artist"
-                            statusText.text = "¡CONECTADO! Reproduciendo..."
+                            statusText.text = "¡CONECTADO! Reproduciendo HQ"
                             
                             player?.setMediaItem(MediaItem.fromUri(streamUrl))
                             player?.prepare()
                             player?.play()
                         }
                     } else {
-                        throw Exception("No hay resultados en esta fuente.")
+                        throw Exception("No se encontró la canción.")
                     }
                 } else {
-                    throw Exception("Error de red: ${connection.responseCode}")
+                    throw Exception("Error de conexión: ${connection.responseCode}")
                 }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
                     loader.visibility = View.GONE
                     statusText.text = "Fallo: ${e.message}"
-                    Toast.makeText(this@MainActivity, "Intenta cambiar de servidor en el menú", Toast.LENGTH_SHORT).show()
                 }
             } finally {
                 connection?.disconnect()
