@@ -1,6 +1,9 @@
 package com.tuapp.tidal
 
+import android.content.Context
 import android.graphics.Color
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.os.Bundle
 import android.view.Gravity
 import android.view.View
@@ -32,7 +35,6 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // CONTENEDOR OLED NEGRO PURO
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(Color.BLACK)
@@ -40,9 +42,8 @@ class MainActivity : AppCompatActivity() {
             gravity = Gravity.CENTER_HORIZONTAL
         }
 
-        // BUSCADOR
         val searchBar = EditText(this).apply {
-            hint = "Artista o canción..."
+            hint = "Escribe canción..."
             setHintTextColor(Color.GRAY)
             setTextColor(Color.WHITE)
             setBackgroundColor(Color.parseColor("#121212"))
@@ -50,12 +51,11 @@ class MainActivity : AppCompatActivity() {
         }
 
         val btnSearch = Button(this).apply {
-            text = "BUSCAR EN ALTA CALIDAD"
+            text = "BUSCAR HQ"
             setTextColor(Color.WHITE)
             setBackgroundColor(Color.TRANSPARENT)
         }
 
-        // ELEMENTOS VISUALES
         albumArt = ImageView(this).apply {
             layoutParams = LinearLayout.LayoutParams(850, 850).apply { setMargins(0, 60, 0, 40) }
             visibility = View.GONE
@@ -63,13 +63,12 @@ class MainActivity : AppCompatActivity() {
 
         songInfo = TextView(this).apply {
             setTextColor(Color.WHITE)
-            textSize = 20f
+            textSize = 18f
             gravity = Gravity.CENTER
-            setPadding(0, 0, 0, 10)
         }
 
         statusText = TextView(this).apply {
-            text = "320kbps Ready"
+            text = "Modo: Datos Móviles/WiFi"
             setTextColor(Color.parseColor("#1DB954"))
             textSize = 11f
             setPadding(0, 0, 0, 60)
@@ -85,7 +84,6 @@ class MainActivity : AppCompatActivity() {
             scaleY = 2.5f
         }
 
-        // AGREGAR AL DISEÑO
         root.addView(searchBar)
         root.addView(btnSearch)
         root.addView(albumArt)
@@ -95,12 +93,14 @@ class MainActivity : AppCompatActivity() {
         root.addView(btnPlayPause)
 
         setContentView(root)
-        
         setupPlayer()
 
         btnSearch.setOnClickListener {
-            val query = searchBar.text.toString()
-            if (query.isNotEmpty()) performSearch(query)
+            val q = searchBar.text.toString()
+            if (q.isNotEmpty()) {
+                if (isNetworkAvailable()) performSearch(q)
+                else Toast.makeText(this, "Sin conexión a Internet", Toast.LENGTH_SHORT).show()
+            }
         }
 
         btnPlayPause.setOnClickListener {
@@ -108,17 +108,72 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun isNetworkAvailable(): Boolean {
+        val connectivityManager = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        val nw = connectivityManager.activeNetwork ?: return false
+        val actNw = connectivityManager.getNetworkCapabilities(nw) ?: return false
+        return when {
+            actNw.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> true
+            actNw.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> true
+            else -> false
+        }
+    }
+
     private fun setupPlayer() {
         player = ExoPlayer.Builder(this).build().apply {
             addListener(object : Player.Listener {
                 override fun onIsPlayingChanged(isPlaying: Boolean) {
-                    btnPlayPause.setImageResource(
-                        if (isPlaying) android.R.drawable.ic_media_pause 
-                        else android.R.drawable.ic_media_play
-                    )
+                    btnPlayPause.setImageResource(if (isPlaying) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play)
                 }
             })
         }
     }
 
-    private
+    private fun performSearch(query: String) {
+        loader.visibility = View.VISIBLE
+        statusText.text = "Conectando..."
+        
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val encoded = URLEncoder.encode(query, "UTF-8")
+                val url = URL("https://saavn.dev/api/search/songs?query=$encoded")
+                val conn = url.openConnection() as HttpURLConnection
+                conn.connectTimeout = 15000 // Aumentamos tiempo por si los datos están lentos
+
+                val response = conn.inputStream.bufferedReader().readText()
+                val json = JSONObject(response)
+                val results = json.getJSONObject("data").getJSONArray("results")
+
+                if (results.length() > 0) {
+                    val track = results.getJSONObject(0)
+                    val title = track.getString("name").replace("&quot;", "\"")
+                    val artist = track.getJSONObject("artists").getJSONArray("primary").getJSONObject(0).getString("name")
+                    val hqUrl = track.getJSONArray("downloadUrl").getJSONObject(4).getString("url")
+                    val cover = track.getJSONArray("image").getJSONObject(2).getString("url")
+
+                    withContext(Dispatchers.Main) {
+                        loader.visibility = View.GONE
+                        albumArt.visibility = View.VISIBLE
+                        albumArt.load(cover) { transformations(RoundedCornersTransformation(40f)) }
+                        songInfo.text = "$title\n$artist"
+                        statusText.text = "Reproduciendo a 320kbps"
+                        player?.setMediaItem(MediaItem.fromUri(hqUrl))
+                        player?.prepare()
+                        player?.play()
+                    }
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    loader.visibility = View.GONE
+                    statusText.text = "Reintenta la búsqueda"
+                    Toast.makeText(this@MainActivity, "Error de red: Verifique sus datos", Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        player?.release()
+    }
+}
