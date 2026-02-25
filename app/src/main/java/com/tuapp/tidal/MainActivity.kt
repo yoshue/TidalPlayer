@@ -16,7 +16,6 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import coil.load
-import coil.transform.RoundedCornersTransformation
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -25,7 +24,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
 
-// Modelo de datos para la música
+// Modelo de la canción
 data class Song(val id: String, val title: String, val artist: String, val cover: String)
 
 class MainActivity : AppCompatActivity() {
@@ -35,184 +34,148 @@ class MainActivity : AppCompatActivity() {
     private lateinit var adapter: MusicAdapter
     private val songList = mutableListOf<Song>()
     
-    // UI del Mini Player Inferior
-    private lateinit var miniPlayer: LinearLayout
-    private lateinit var miniCover: ImageView
+    // UI components
+    private lateinit var miniPlayer: CardView
     private lateinit var miniTitle: TextView
-    private lateinit var miniBtn: ImageButton
+    private lateinit var miniCover: ImageView
+    private lateinit var btnPlay: ImageButton
     private lateinit var loader: ProgressBar
 
-    private val apiEndpoints = arrayOf(
+    // Lista de servidores ultra-estables (Febrero 2026)
+    private val apiServers = arrayOf(
         "https://pipedapi.lunar.icu",
         "https://api.piped.victr.me",
-        "https://pipedapi.ducks.party"
+        "https://pipedapi.ducks.party",
+        "https://pipedapi.rivo.cc"
     )
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        System.setProperty("https.protocols", "TLSv1.2,TLSv1.3")
+        
+        // Layout Principal (Negro Profundo)
+        val root = RelativeLayout(this).apply { setBackgroundColor(Color.BLACK) }
 
-        // Layout Principal
-        val root = RelativeLayout(this).apply { setBackgroundColor(Color.parseColor("#050505")) }
-
-        // 1. Cabecera y Buscador
-        val header = LinearLayout(this).apply {
+        // 1. Buscador Estilo Spotify
+        val searchBar = CardView(this).apply {
             id = View.generateViewId()
-            orientation = LinearLayout.VERTICAL
-            setPadding(40, 80, 40, 20)
-            layoutParams = RelativeLayout.LayoutParams(-1, -2)
-        }
-
-        val titlePage = TextView(this).apply {
-            text = "Explorar"
-            setTextColor(Color.WHITE)
-            textSize = 28f
-            typeface = Typeface.create("sans-serif-black", Typeface.NORMAL)
-            setPadding(0, 0, 0, 30)
-        }
-
-        val searchCard = CardView(this).apply {
-            radius = 20f
+            radius = 30f
             setCardBackgroundColor(Color.parseColor("#1A1A1A"))
-            elevation = 0f
+            layoutParams = RelativeLayout.LayoutParams(-1, -2).apply {
+                setMargins(40, 100, 40, 30)
+            }
         }
         
-        val searchLayout = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            setPadding(30, 10, 30, 10)
-            gravity = Gravity.CENTER_VERTICAL
-        }
-
-        val input = EditText(this).apply {
-            hint = "Artistas, canciones o álbumes"
+        val searchInput = EditText(this).apply {
+            hint = "Buscar artistas o canciones..."
             setHintTextColor(Color.GRAY)
             setTextColor(Color.WHITE)
             setBackgroundColor(Color.TRANSPARENT)
-            textSize = 14f
-            layoutParams = LinearLayout.LayoutParams(0, -2, 1f)
+            setPadding(40, 30, 40, 30)
+            textSize = 15f
         }
+        searchBar.addView(searchInput)
 
-        val searchBtn = ImageButton(this).apply {
-            setImageResource(android.R.drawable.ic_menu_search)
-            setColorFilter(Color.WHITE)
-            setBackgroundColor(Color.TRANSPARENT)
-        }
-
-        searchLayout.addView(input); searchLayout.addView(searchBtn)
-        searchCard.addView(searchLayout)
-        header.addView(titlePage); header.addView(searchCard)
-
-        // 2. Lista de Resultados (Grid de 2 columnas)
+        // 2. Grid de Resultados (Cuadrícula de 2 columnas)
         recyclerView = RecyclerView(this).apply {
             layoutManager = GridLayoutManager(this@MainActivity, 2)
-            setPadding(20, 20, 20, 200) // Espacio para el miniplayer
+            setPadding(20, 0, 20, 250) // Espacio para el reproductor
             clipToPadding = false
-            val lp = RelativeLayout.LayoutParams(-1, -1)
-            lp.addRule(RelativeLayout.BELOW, header.id)
-            layoutParams = lp
+            layoutParams = RelativeLayout.LayoutParams(-1, -1).apply {
+                addRule(RelativeLayout.BELOW, searchBar.id)
+            }
         }
-        adapter = MusicAdapter(songList) { song -> playSong(song) }
+        adapter = MusicAdapter(songList) { playSong(it) }
         recyclerView.adapter = adapter
 
-        // 3. Mini Player Inferior (Estilo Spotify)
-        miniPlayer = LinearLayout(this).apply {
+        // 3. Mini Reproductor Inferior
+        miniPlayer = CardView(this).apply {
             visibility = View.GONE
-            orientation = LinearLayout.HORIZONTAL
-            setBackgroundColor(Color.parseColor("#121212"))
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(20, 15, 40, 15)
-            val lp = RelativeLayout.LayoutParams(-1, -2)
-            lp.addRule(RelativeLayout.ALIGN_PARENT_BOTTOM)
-            layoutParams = lp
-            elevation = 20f
+            radius = 20f
+            setCardBackgroundColor(Color.parseColor("#222222"))
+            layoutParams = RelativeLayout.LayoutParams(-1, 160).apply {
+                addRule(RelativeLayout.ALIGN_PARENT_BOTTOM)
+                setMargins(30, 0, 30, 40)
+            }
         }
-
-        miniCover = ImageView(this).apply { layoutParams = LinearLayout.LayoutParams(120, 120) }
         
-        val textContainer = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(30, 0, 0, 0)
-            layoutParams = LinearLayout.LayoutParams(0, -2, 1f)
+        val miniLayout = LinearLayout(this).apply { 
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(20, 10, 30, 10)
         }
+        
+        miniCover = ImageView(this).apply { layoutParams = LinearLayout.LayoutParams(120, 120) }
         miniTitle = TextView(this).apply {
-            setTextColor(Color.WHITE); textSize = 14f; maxLines = 1
-            typeface = Typeface.DEFAULT_BOLD
+            setTextColor(Color.WHITE); textSize = 14f; setPadding(30, 0, 0, 0)
+            layoutParams = LinearLayout.LayoutParams(0, -2, 1f); maxLines = 1
         }
-        val miniSub = TextView(this).apply {
-            text = "Reproduciendo ahora"; setTextColor(Color.GRAY); textSize = 11f
-        }
-        textContainer.addView(miniTitle); textContainer.addView(miniSub)
-
-        miniBtn = ImageButton(this).apply {
+        btnPlay = ImageButton(this).apply {
             setImageResource(android.R.drawable.ic_media_pause)
             setBackgroundColor(Color.TRANSPARENT); setColorFilter(Color.WHITE)
-            scaleX = 1.3f; scaleY = 1.3f
         }
-
-        miniPlayer.addView(miniCover); miniPlayer.addView(textContainer); miniPlayer.addView(miniBtn)
+        
+        miniLayout.addView(miniCover); miniLayout.addView(miniTitle); miniLayout.addView(btnPlay)
+        miniPlayer.addView(miniLayout)
 
         loader = ProgressBar(this).apply {
             visibility = View.GONE
-            val lp = RelativeLayout.LayoutParams(-2, -2)
-            lp.addRule(RelativeLayout.CENTER_IN_PARENT)
-            layoutParams = lp
+            layoutParams = RelativeLayout.LayoutParams(-2, -2).apply { addRule(RelativeLayout.CENTER_IN_PARENT) }
         }
 
-        root.addView(header); root.addView(recyclerView); root.addView(miniPlayer); root.addView(loader)
+        root.addView(searchBar); root.addView(recyclerView); root.addView(miniPlayer); root.addView(loader)
         setContentView(root)
-        setupPlayer()
 
-        searchBtn.setOnClickListener {
-            val q = input.text.toString()
-            if (q.isNotEmpty()) searchMusic(q)
+        // Evento de búsqueda
+        searchInput.setOnEditorActionListener { v, _, _ ->
+            val query = v.text.toString()
+            if (query.isNotEmpty()) performSearch(query)
+            true
         }
-        
-        miniBtn.setOnClickListener {
-            player?.let { if (it.isPlaying) it.pause() else it.play() }
-        }
+
+        setupPlayer()
     }
 
     private fun setupPlayer() {
-        player = ExoPlayer.Builder(this).build().apply {
-            addListener(object : Player.Listener {
-                override fun onIsPlayingChanged(isPlaying: Boolean) {
-                    miniBtn.setImageResource(if (isPlaying) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play)
-                }
-            })
+        player = ExoPlayer.Builder(this).build()
+        btnPlay.setOnClickListener {
+            player?.let { if (it.isPlaying) it.pause() else it.play() }
+            btnPlay.setImageResource(if (player?.isPlaying == true) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play)
         }
     }
 
-    private fun searchMusic(query: String) {
+    private fun performSearch(query: String) {
         loader.visibility = View.VISIBLE
+        songList.clear()
+        adapter.notifyDataSetChanged()
+
         lifecycleScope.launch(Dispatchers.IO) {
-            for (base in apiEndpoints) {
+            var success = false
+            for (server in apiServers) {
+                if (success) break
                 try {
-                    val q = URLEncoder.encode(query, "UTF-8")
-                    val conn = URL("$base/search?q=$q&filter=music_songs").openConnection() as HttpURLConnection
+                    val url = URL("$server/search?q=${URLEncoder.encode(query, "UTF-8")}&filter=music_songs")
+                    val conn = url.openConnection() as HttpURLConnection
+                    conn.apply { connectTimeout = 5000; readTimeout = 5000; setRequestProperty("User-Agent", "Mozilla/5.0") }
+
                     if (conn.responseCode == 200) {
-                        val json = JSONObject(conn.inputStream.bufferedReader().readText())
-                        val items = json.getJSONArray("items")
-                        
-                        val tempResults = mutableListOf<Song>()
-                        for (i in 0 until items.length()) {
-                            val obj = items.getJSONObject(i)
-                            tempResults.add(Song(
-                                obj.getString("url").split("v=")[1],
-                                obj.getString("title"),
-                                obj.getString("uploaderName"),
-                                obj.getString("thumbnail")
-                            ))
+                        val response = conn.inputStream.bufferedReader().readText()
+                        if (response.trim().startsWith("{")) {
+                            val items = JSONObject(response).getJSONArray("items")
+                            for (i in 0 until items.length()) {
+                                val item = items.getJSONObject(i)
+                                val videoId = item.getString("url").split("v=").getOrNull(1) ?: ""
+                                songList.add(Song(videoId, item.getString("title"), item.getString("uploaderName"), item.getString("thumbnail")))
+                            }
+                            success = true
                         }
-                        
-                        withContext(Dispatchers.Main) {
-                            songList.clear()
-                            songList.addAll(tempResults)
-                            adapter.notifyDataSetChanged()
-                            loader.visibility = View.GONE
-                        }
-                        return@launch
                     }
                 } catch (e: Exception) { continue }
+            }
+
+            withContext(Dispatchers.Main) {
+                loader.visibility = View.GONE
+                if (!success) Toast.makeText(this@MainActivity, "Error de conexión. Intenta de nuevo.", Toast.LENGTH_SHORT).show()
+                adapter.notifyDataSetChanged()
             }
         }
     }
@@ -220,65 +183,49 @@ class MainActivity : AppCompatActivity() {
     private fun playSong(song: Song) {
         miniPlayer.visibility = View.VISIBLE
         miniTitle.text = song.title
-        miniCover.load(song.cover) { transformations(RoundedCornersTransformation(10f)) }
+        miniCover.load(song.cover)
         
         lifecycleScope.launch(Dispatchers.IO) {
             try {
-                val sUrl = URL("${apiEndpoints[0]}/streams/${song.id}")
-                val sJson = JSONObject(sUrl.readText())
-                val audio = sJson.getJSONArray("audioStreams").getJSONObject(0).getString("url")
+                // Buscamos el stream en el primer servidor disponible
+                val streamUrl = URL("${apiServers[0]}/streams/${song.id}")
+                val json = JSONObject(streamUrl.readText())
+                val audioUrl = json.getJSONArray("audioStreams").getJSONObject(0).getString("url")
                 
                 withContext(Dispatchers.Main) {
-                    player?.setMediaItem(MediaItem.fromUri(audio))
+                    player?.setMediaItem(MediaItem.fromUri(audioUrl))
                     player?.prepare(); player?.play()
                 }
             } catch (e: Exception) { }
         }
     }
 
-    // --- ADAPTADOR PARA LA CUADRÍCULA ---
-    inner class MusicAdapter(private val list: List<Song>, val onClick: (Song) -> Unit) : 
-        RecyclerView.Adapter<MusicAdapter.VH>() {
-        
-        inner class VH(val view: View) : RecyclerView.ViewHolder(view) {
-            val img = view.findViewById<ImageView>(1)
-            val txt = view.findViewById<TextView>(2)
-            val art = view.findViewById<TextView>(3)
+    // --- ADAPTADOR DE CUADRÍCULA ---
+    inner class MusicAdapter(val list: List<Song>, val onClick: (Song) -> Unit) : RecyclerView.Adapter<MusicAdapter.VH>() {
+        inner class VH(v: View) : RecyclerView.ViewHolder(v) {
+            val img = v.findViewById<ImageView>(1)
+            val title = v.findViewById<TextView>(2)
+            val artist = v.findViewById<TextView>(3)
         }
 
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH {
             val card = CardView(parent.context).apply {
-                radius = 15f; setCardBackgroundColor(Color.TRANSPARENT); elevation = 0f
+                radius = 20f; setCardBackgroundColor(Color.parseColor("#111111"))
                 layoutParams = GridLayoutManager.LayoutParams(-1, -2).apply { setMargins(15, 15, 15, 15) }
             }
             val lay = LinearLayout(parent.context).apply { orientation = LinearLayout.VERTICAL }
-            val iv = ImageView(parent.context).apply { 
-                id = 1; layoutParams = LinearLayout.LayoutParams(-1, 400)
-                scaleType = ImageView.ScaleType.CENTER_CROP
-            }
-            val tv = TextView(parent.context).apply { 
-                id = 2; setTextColor(Color.WHITE); textSize = 13f; maxLines = 1; setPadding(5, 15, 5, 0) 
-                typeface = Typeface.DEFAULT_BOLD
-            }
-            val av = TextView(parent.context).apply { 
-                id = 3; setTextColor(Color.GRAY); textSize = 11f; setPadding(5, 0, 5, 10) 
-            }
-            lay.addView(iv); lay.addView(tv); lay.addView(av); card.addView(lay)
+            val iv = ImageView(parent.context).apply { id = 1; layoutParams = LinearLayout.LayoutParams(-1, 400); scaleType = ImageView.ScaleType.CENTER_CROP }
+            val t1 = TextView(parent.context).apply { id = 2; setTextColor(Color.WHITE); textSize = 14f; setPadding(10, 10, 10, 0); maxLines = 1; typeface = Typeface.DEFAULT_BOLD }
+            val t2 = TextView(parent.context).apply { id = 3; setTextColor(Color.GRAY); textSize = 12f; setPadding(10, 0, 10, 20) }
+            lay.addView(iv); lay.addView(t1); lay.addView(t2); card.addView(lay)
             return VH(card)
         }
 
-        override fun onBindViewHolder(holder: VH, position: Int) {
-            val s = list[position]
-            holder.img.load(s.cover) { transformations(RoundedCornersTransformation(20f)) }
-            holder.txt.text = s.title
-            holder.art.text = s.artist
-            holder.view.setOnClickListener { onClick(s) }
+        override fun onBindViewHolder(h: VH, p: Int) {
+            val s = list[p]
+            h.img.load(s.cover); h.title.text = s.title; h.artist.text = s.artist
+            h.itemView.setOnClickListener { onClick(s) }
         }
         override fun getItemCount() = list.size
-    }
-
-    override fun onDestroy() {
-        super.onDestroy()
-        player?.release()
     }
 }
