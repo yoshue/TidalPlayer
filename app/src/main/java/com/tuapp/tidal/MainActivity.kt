@@ -32,6 +32,9 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        // SOLUCIÓN PARA HUAWEI/DATOS: Forzamos protocolos de seguridad modernos
+        System.setProperty("https.protocols", "TLSv1.2,TLSv1.3")
+
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(Color.BLACK)
@@ -40,7 +43,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         val searchBar = EditText(this).apply {
-            hint = "Prueba iTunes (30 seg)..."
+            hint = "Buscar música..."
             setHintTextColor(Color.GRAY)
             setTextColor(Color.WHITE)
             setBackgroundColor(Color.parseColor("#121212"))
@@ -48,7 +51,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         val btnSearch = Button(this).apply {
-            text = "TEST DE CONEXIÓN"
+            text = "BUSCAR AHORA"
             setTextColor(Color.WHITE)
             setBackgroundColor(Color.TRANSPARENT)
         }
@@ -65,8 +68,8 @@ class MainActivity : AppCompatActivity() {
         }
 
         statusText = TextView(this).apply {
-            text = "API: iTunes (Estable)"
-            setTextColor(Color.YELLOW)
+            text = "Estado: Listo para conectar"
+            setTextColor(Color.CYAN)
             textSize = 11f
             setPadding(0, 0, 0, 60)
         }
@@ -94,7 +97,7 @@ class MainActivity : AppCompatActivity() {
 
         btnSearch.setOnClickListener {
             val q = searchBar.text.toString()
-            if (q.isNotEmpty()) testiTunesApi(q)
+            if (q.isNotEmpty()) performUltimateSearch(q)
         }
 
         btnPlayPause.setOnClickListener {
@@ -112,53 +115,70 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun testiTunesApi(query: String) {
+    private fun performUltimateSearch(query: String) {
         loader.visibility = View.VISIBLE
-        statusText.text = "Probando red con iTunes..."
+        statusText.text = "Saltando bloqueos de red..."
         
         lifecycleScope.launch(Dispatchers.IO) {
+            var connection: HttpURLConnection? = null
             try {
                 val encoded = URLEncoder.encode(query, "UTF-8")
-                // URL oficial de iTunes Search
-                val url = URL("https://itunes.apple.com/search?term=$encoded&limit=1&entity=song")
-                val conn = url.openConnection() as HttpURLConnection
-                conn.connectTimeout = 15000
+                // Probamos con la API definitiva de nuevo pero con cabeceras de bypass
+                val url = URL("https://saavn.dev/api/search/songs?query=$encoded")
+                
+                connection = url.openConnection() as HttpURLConnection
+                connection.apply {
+                    requestMethod = "GET"
+                    connectTimeout = 20000
+                    readTimeout = 20000
+                    // CABECERAS CRÍTICAS PARA EVITAR "CONNECTION CLOSED"
+                    setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36")
+                    setRequestProperty("Accept", "application/json")
+                    setRequestProperty("Connection", "close") // Cerramos sesión para que no nos corten
+                    doInput = true
+                }
 
-                if (conn.responseCode == 200) {
-                    val response = conn.inputStream.bufferedReader().readText()
+                val responseCode = connection.responseCode
+                if (responseCode == 200) {
+                    val response = connection.inputStream.bufferedReader().readText()
                     val json = JSONObject(response)
-                    val results = json.getJSONArray("results")
+                    val results = json.getJSONObject("data").getJSONArray("results")
 
                     if (results.length() > 0) {
                         val track = results.getJSONObject(0)
-                        val title = track.getString("trackName")
-                        val artist = track.getString("artistName")
-                        val previewUrl = track.getString("previewUrl") // Fragmento de 30 seg
-                        val cover = track.getString("artworkUrl100").replace("100x100", "600x600")
+                        val title = track.getString("name").replace("&quot;", "\"")
+                        val artist = track.getJSONObject("artists").getJSONArray("primary").getJSONObject(0).getString("name")
+                        
+                        // Buscamos el link de mayor calidad (320kbps)
+                        val downloadArray = track.getJSONArray("downloadUrl")
+                        val streamUrl = downloadArray.getJSONObject(downloadArray.length() - 1).getString("url")
+                        
+                        val imgArray = track.getJSONArray("image")
+                        val coverUrl = imgArray.getJSONObject(imgArray.length() - 1).getString("url")
 
                         withContext(Dispatchers.Main) {
                             loader.visibility = View.GONE
                             albumArt.visibility = View.VISIBLE
-                            albumArt.load(cover) { transformations(RoundedCornersTransformation(40f)) }
+                            albumArt.load(coverUrl) { transformations(RoundedCornersTransformation(40f)) }
                             songInfo.text = "$title\n$artist"
-                            statusText.text = "¡CONEXIÓN EXITOSA! (Preview)"
-                            
-                            player?.setMediaItem(MediaItem.fromUri(previewUrl))
+                            statusText.text = "¡Conectado! Reproduciendo..."
+                            player?.setMediaItem(MediaItem.fromUri(streamUrl))
                             player?.prepare()
                             player?.play()
                         }
-                    } else {
-                        throw Exception("Sin resultados")
                     }
                 } else {
-                    throw Exception("Error HTTP: ${conn.responseCode}")
+                    throw Exception("Servidor respondió error $responseCode")
                 }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
                     loader.visibility = View.GONE
-                    statusText.text = "Fallo: ${e.message}"
-                    Toast.makeText(this@MainActivity, "Revisa tus datos", Toast.LENGTH_LONG).show()
+                    statusText.text = "Error: ${e.message}"
+                    // Si falla, borramos el buffer del reproductor por si acaso
+                    player?.stop()
                 }
+            } finally {
+                connection?.disconnect()
             }
         }
     }
