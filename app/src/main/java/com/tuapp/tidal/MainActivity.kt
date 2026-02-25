@@ -32,7 +32,7 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // SOLUCIÓN PARA HUAWEI/DATOS: Forzamos protocolos de seguridad modernos
+        // Mantenemos la protección TLS para Huawei
         System.setProperty("https.protocols", "TLSv1.2,TLSv1.3")
 
         val root = LinearLayout(this).apply {
@@ -43,7 +43,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         val searchBar = EditText(this).apply {
-            hint = "Buscar música..."
+            hint = "Buscar en Deezer..."
             setHintTextColor(Color.GRAY)
             setTextColor(Color.WHITE)
             setBackgroundColor(Color.parseColor("#121212"))
@@ -51,7 +51,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         val btnSearch = Button(this).apply {
-            text = "BUSCAR AHORA"
+            text = "PROBAR SONIDO"
             setTextColor(Color.WHITE)
             setBackgroundColor(Color.TRANSPARENT)
         }
@@ -68,8 +68,8 @@ class MainActivity : AppCompatActivity() {
         }
 
         statusText = TextView(this).apply {
-            text = "Estado: Listo para conectar"
-            setTextColor(Color.CYAN)
+            text = "API: Deezer Public"
+            setTextColor(Color.MAGENTA)
             textSize = 11f
             setPadding(0, 0, 0, 60)
         }
@@ -97,7 +97,7 @@ class MainActivity : AppCompatActivity() {
 
         btnSearch.setOnClickListener {
             val q = searchBar.text.toString()
-            if (q.isNotEmpty()) performUltimateSearch(q)
+            if (q.isNotEmpty()) searchOnDeezer(q)
         }
 
         btnPlayPause.setOnClickListener {
@@ -115,67 +115,58 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun performUltimateSearch(query: String) {
+    private fun searchOnDeezer(query: String) {
         loader.visibility = View.VISIBLE
-        statusText.text = "Saltando bloqueos de red..."
+        statusText.text = "Consultando Deezer..."
         
         lifecycleScope.launch(Dispatchers.IO) {
             var connection: HttpURLConnection? = null
             try {
                 val encoded = URLEncoder.encode(query, "UTF-8")
-                // Probamos con la API definitiva de nuevo pero con cabeceras de bypass
-                val url = URL("https://saavn.dev/api/search/songs?query=$encoded")
+                // URL DE DEEZER: Súper estable y devuelve JSON real
+                val url = URL("https://api.deezer.com/search?q=$encoded&limit=1")
                 
                 connection = url.openConnection() as HttpURLConnection
                 connection.apply {
-                    requestMethod = "GET"
-                    connectTimeout = 20000
-                    readTimeout = 20000
-                    // CABECERAS CRÍTICAS PARA EVITAR "CONNECTION CLOSED"
-                    setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36")
+                    connectTimeout = 15000
+                    readTimeout = 15000
+                    setRequestProperty("User-Agent", "Mozilla/5.0")
                     setRequestProperty("Accept", "application/json")
-                    setRequestProperty("Connection", "close") // Cerramos sesión para que no nos corten
-                    doInput = true
                 }
 
-                val responseCode = connection.responseCode
-                if (responseCode == 200) {
+                if (connection.responseCode == 200) {
                     val response = connection.inputStream.bufferedReader().readText()
                     val json = JSONObject(response)
-                    val results = json.getJSONObject("data").getJSONArray("results")
+                    val data = json.getJSONArray("data")
 
-                    if (results.length() > 0) {
-                        val track = results.getJSONObject(0)
-                        val title = track.getString("name").replace("&quot;", "\"")
-                        val artist = track.getJSONObject("artists").getJSONArray("primary").getJSONObject(0).getString("name")
-                        
-                        // Buscamos el link de mayor calidad (320kbps)
-                        val downloadArray = track.getJSONArray("downloadUrl")
-                        val streamUrl = downloadArray.getJSONObject(downloadArray.length() - 1).getString("url")
-                        
-                        val imgArray = track.getJSONArray("image")
-                        val coverUrl = imgArray.getJSONObject(imgArray.length() - 1).getString("url")
+                    if (data.length() > 0) {
+                        val track = data.getJSONObject(0)
+                        val title = track.getString("title")
+                        val artist = track.getJSONObject("artist").getString("name")
+                        val previewUrl = track.getString("preview") // Audio de alta calidad
+                        val coverUrl = track.getJSONObject("album").getString("cover_xl")
 
                         withContext(Dispatchers.Main) {
                             loader.visibility = View.GONE
                             albumArt.visibility = View.VISIBLE
                             albumArt.load(coverUrl) { transformations(RoundedCornersTransformation(40f)) }
                             songInfo.text = "$title\n$artist"
-                            statusText.text = "¡Conectado! Reproduciendo..."
-                            player?.setMediaItem(MediaItem.fromUri(streamUrl))
+                            statusText.text = "¡CONECTADO! Reproduciendo..."
+                            
+                            player?.setMediaItem(MediaItem.fromUri(previewUrl))
                             player?.prepare()
                             player?.play()
                         }
+                    } else {
+                        throw Exception("No se encontró nada")
                     }
                 } else {
-                    throw Exception("Servidor respondió error $responseCode")
+                    throw Exception("Error del servidor: ${connection.responseCode}")
                 }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
                     loader.visibility = View.GONE
-                    statusText.text = "Error: ${e.message}"
-                    // Si falla, borramos el buffer del reproductor por si acaso
-                    player?.stop()
+                    statusText.text = "Fallo: ${e.message}"
                 }
             } finally {
                 connection?.disconnect()
