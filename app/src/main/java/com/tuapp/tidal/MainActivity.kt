@@ -68,7 +68,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         statusText = TextView(this).apply {
-            text = "Modo: Datos Móviles/WiFi"
+            text = "320kbps Mode"
             setTextColor(Color.parseColor("#1DB954"))
             textSize = 11f
             setPadding(0, 0, 0, 60)
@@ -97,25 +97,11 @@ class MainActivity : AppCompatActivity() {
 
         btnSearch.setOnClickListener {
             val q = searchBar.text.toString()
-            if (q.isNotEmpty()) {
-                if (isNetworkAvailable()) performSearch(q)
-                else Toast.makeText(this, "Sin conexión a Internet", Toast.LENGTH_SHORT).show()
-            }
+            if (q.isNotEmpty()) performSearch(q)
         }
 
         btnPlayPause.setOnClickListener {
             player?.let { if (it.isPlaying) it.pause() else it.play() }
-        }
-    }
-
-    private fun isNetworkAvailable(): Boolean {
-        val connectivityManager = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-        val nw = connectivityManager.activeNetwork ?: return false
-        val actNw = connectivityManager.getNetworkCapabilities(nw) ?: return false
-        return when {
-            actNw.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> true
-            actNw.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> true
-            else -> false
         }
     }
 
@@ -138,7 +124,7 @@ class MainActivity : AppCompatActivity() {
                 val encoded = URLEncoder.encode(query, "UTF-8")
                 val url = URL("https://saavn.dev/api/search/songs?query=$encoded")
                 val conn = url.openConnection() as HttpURLConnection
-                conn.connectTimeout = 15000 // Aumentamos tiempo por si los datos están lentos
+                conn.connectTimeout = 15000
 
                 val response = conn.inputStream.bufferedReader().readText()
                 val json = JSONObject(response)
@@ -165,8 +151,7 @@ class MainActivity : AppCompatActivity() {
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
                     loader.visibility = View.GONE
-                    statusText.text = "Reintenta la búsqueda"
-                    Toast.makeText(this@MainActivity, "Error de red: Verifique sus datos", Toast.LENGTH_LONG).show()
+                    statusText.text = "Error: Verifica tus datos"
                 }
             }
         }
