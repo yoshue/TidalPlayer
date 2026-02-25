@@ -28,21 +28,41 @@ class MainActivity : AppCompatActivity() {
     private lateinit var songInfo: TextView
     private lateinit var loader: ProgressBar
     private lateinit var statusText: TextView
+    private lateinit var sourceSpinner: Spinner
+    
+    // Lista de servidores activos a Feb 2026
+    private val serverNames = arrayOf("Servidor Alpha (Principal)", "Servidor Beta (Estable)", "Servidor Gamma (Alternativo)")
+    private val serverUrls = arrayOf(
+        "https://saavn.dev/api/search/songs?query=",
+        "https://saavn.me/search/songs?query=",
+        "https://jiosaavn-api.vercel.app/search/songs?query="
+    )
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
         System.setProperty("https.protocols", "TLSv1.2,TLSv1.3")
 
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(Color.BLACK)
-            setPadding(60, 80, 60, 60)
+            setPadding(60, 40, 60, 60)
             gravity = Gravity.CENTER_HORIZONTAL
         }
 
+        // Selector de Fuente
+        val label = TextView(this).apply {
+            text = "SELECCIONAR FUENTE:"
+            setTextColor(Color.GRAY)
+            textSize = 12f
+        }
+        
+        sourceSpinner = Spinner(this).apply {
+            adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_dropdown_item, serverNames)
+            setBackgroundColor(Color.DKGRAY)
+        }
+
         val searchBar = EditText(this).apply {
-            hint = "Nombre de la canción..."
+            hint = "Canción o Artista..."
             setHintTextColor(Color.GRAY)
             setTextColor(Color.WHITE)
             setBackgroundColor(Color.parseColor("#121212"))
@@ -50,27 +70,26 @@ class MainActivity : AppCompatActivity() {
         }
 
         val btnSearch = Button(this).apply {
-            text = "REPRODUCIR HQ"
+            text = "REPRODUCIR AHORA"
             setTextColor(Color.WHITE)
-            setBackgroundColor(Color.TRANSPARENT)
+            setBackgroundColor(Color.parseColor("#00E5FF"))
         }
 
         albumArt = ImageView(this).apply {
-            layoutParams = LinearLayout.LayoutParams(850, 850).apply { setMargins(0, 60, 0, 40) }
+            layoutParams = LinearLayout.LayoutParams(800, 800).apply { setMargins(0, 40, 0, 20) }
             visibility = View.GONE
         }
 
         songInfo = TextView(this).apply {
             setTextColor(Color.WHITE)
-            textSize = 18f
+            textSize = 16f
             gravity = Gravity.CENTER
         }
 
         statusText = TextView(this).apply {
-            text = "Estado: Servidor Activo"
+            text = "Estado: En espera"
             setTextColor(Color.CYAN)
             textSize = 11f
-            setPadding(0, 0, 0, 60)
         }
 
         loader = ProgressBar(this).apply { visibility = View.GONE }
@@ -79,10 +98,12 @@ class MainActivity : AppCompatActivity() {
             setImageResource(android.R.drawable.ic_media_play)
             setBackgroundColor(Color.TRANSPARENT)
             setColorFilter(Color.WHITE)
-            scaleX = 2.5f
-            scaleY = 2.5f
+            scaleX = 2f
+            scaleY = 2f
         }
 
+        root.addView(label)
+        root.addView(sourceSpinner)
         root.addView(searchBar)
         root.addView(btnSearch)
         root.addView(albumArt)
@@ -96,7 +117,7 @@ class MainActivity : AppCompatActivity() {
 
         btnSearch.setOnClickListener {
             val q = searchBar.text.toString()
-            if (q.isNotEmpty()) fetchMusicBypass(q)
+            if (q.isNotEmpty()) fetchMusic(q)
         }
 
         btnPlayPause.setOnClickListener {
@@ -114,16 +135,16 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun fetchMusicBypass(query: String) {
+    private fun fetchMusic(query: String) {
+        val serverIndex = sourceSpinner.selectedItemPosition
         loader.visibility = View.VISIBLE
-        statusText.text = "Buscando en servidor espejo..."
+        statusText.text = "Conectando a ${serverNames[serverIndex]}..."
         
         lifecycleScope.launch(Dispatchers.IO) {
             var connection: HttpURLConnection? = null
             try {
                 val encoded = URLEncoder.encode(query, "UTF-8")
-                // CAMBIO DE API A INSTANCIA VERIFICADA 2026
-                val url = URL("https://saavn.dev/api/search/songs?query=$encoded")
+                val url = URL(serverUrls[serverIndex] + encoded)
                 
                 connection = url.openConnection() as HttpURLConnection
                 connection.apply {
@@ -133,37 +154,31 @@ class MainActivity : AppCompatActivity() {
                     setRequestProperty("Accept", "application/json")
                 }
 
-                val responseCode = connection.responseCode
-                if (responseCode == 200) {
+                if (connection.responseCode == 200) {
                     val text = connection.inputStream.bufferedReader().readText()
                     
-                    // SEGURIDAD: Si no empieza con {, es un HTML de error del servidor
-                    if (!text.trim().startsWith("{")) {
-                        throw Exception("El servidor está saturado, intenta de nuevo.")
-                    }
+                    if (!text.trim().startsWith("{")) throw Exception("Servidor saturado (envió HTML). Prueba otra fuente.")
 
                     val json = JSONObject(text)
-                    val data = json.getJSONObject("data")
-                    val results = data.getJSONArray("results")
+                    val dataObj = json.optJSONObject("data")
+                    val results = dataObj?.optJSONArray("results") ?: json.optJSONArray("data") ?: throw Exception("Formato no reconocido")
 
                     if (results.length() > 0) {
                         val track = results.getJSONObject(0)
                         val title = track.getString("name").replace("&quot;", "\"")
+                        val artist = track.optJSONObject("artists")?.optJSONArray("primary")?.optJSONObject(0)?.optString("name") ?: "Desconocido"
                         
-                        // Nueva forma de obtener el artista en saavn.dev
-                        val artistName = track.getJSONObject("artists").getJSONArray("primary").getJSONObject(0).getString("name")
+                        val dUrls = track.getJSONArray("downloadUrl")
+                        val streamUrl = dUrls.getJSONObject(dUrls.length() - 1).getString("url")
                         
-                        val dUrl = track.getJSONArray("downloadUrl")
-                        val streamUrl = dUrl.getJSONObject(dUrl.length() - 1).getString("url")
-                        
-                        val img = track.getJSONArray("image")
-                        val cover = img.getJSONObject(img.length() - 1).getString("url")
+                        val imgs = track.getJSONArray("image")
+                        val cover = imgs.getJSONObject(imgs.length() - 1).getString("url")
 
                         withContext(Dispatchers.Main) {
                             loader.visibility = View.GONE
                             albumArt.visibility = View.VISIBLE
                             albumArt.load(cover) { transformations(RoundedCornersTransformation(40f)) }
-                            songInfo.text = "$title\n$artistName"
+                            songInfo.text = "$title\n$artist"
                             statusText.text = "¡CONECTADO! Reproduciendo..."
                             
                             player?.setMediaItem(MediaItem.fromUri(streamUrl))
@@ -171,15 +186,16 @@ class MainActivity : AppCompatActivity() {
                             player?.play()
                         }
                     } else {
-                        throw Exception("No encontré esa canción.")
+                        throw Exception("No hay resultados en esta fuente.")
                     }
                 } else {
-                    throw Exception("Error de servidor: $responseCode")
+                    throw Exception("Error de red: ${connection.responseCode}")
                 }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
                     loader.visibility = View.GONE
                     statusText.text = "Fallo: ${e.message}"
+                    Toast.makeText(this@MainActivity, "Intenta cambiar de servidor en el menú", Toast.LENGTH_SHORT).show()
                 }
             } finally {
                 connection?.disconnect()
