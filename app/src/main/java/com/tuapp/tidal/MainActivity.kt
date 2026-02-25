@@ -32,7 +32,7 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Seguridad TLS para evitar bloqueos de operadora
+        // Forzamos protocolos modernos para evitar que la operadora corte el "handshake"
         System.setProperty("https.protocols", "TLSv1.2,TLSv1.3")
 
         val root = LinearLayout(this).apply {
@@ -43,7 +43,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         val searchBar = EditText(this).apply {
-            hint = "Canción completa (320kbps)..."
+            hint = "Nombre de la canción..."
             setHintTextColor(Color.GRAY)
             setTextColor(Color.WHITE)
             setBackgroundColor(Color.parseColor("#121212"))
@@ -51,7 +51,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         val btnSearch = Button(this).apply {
-            text = "BUSCAR HQ"
+            text = "REPRODUCIR HQ"
             setTextColor(Color.WHITE)
             setBackgroundColor(Color.TRANSPARENT)
         }
@@ -68,8 +68,8 @@ class MainActivity : AppCompatActivity() {
         }
 
         statusText = TextView(this).apply {
-            text = "Calidad: Extreme 320kbps"
-            setTextColor(Color.parseColor("#1DB954"))
+            text = "Calidad: 320kbps Activada"
+            setTextColor(Color.CYAN)
             textSize = 11f
             setPadding(0, 0, 0, 60)
         }
@@ -97,7 +97,7 @@ class MainActivity : AppCompatActivity() {
 
         btnSearch.setOnClickListener {
             val q = searchBar.text.toString()
-            if (q.isNotEmpty()) searchFullHQ(q)
+            if (q.isNotEmpty()) fetchMusicBypass(q)
         }
 
         btnPlayPause.setOnClickListener {
@@ -115,29 +115,33 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun searchFullHQ(query: String) {
+    private fun fetchMusicBypass(query: String) {
         loader.visibility = View.VISIBLE
-        statusText.text = "Obteniendo audio HQ..."
+        statusText.text = "Conectando al servidor HQ..."
         
         lifecycleScope.launch(Dispatchers.IO) {
             var connection: HttpURLConnection? = null
             try {
                 val encoded = URLEncoder.encode(query, "UTF-8")
-                // Usamos el endpoint global de Saavn
-                val url = URL("https://saavn.dev/api/search/songs?query=$encoded&limit=1")
+                // CAMBIO DE API: Usamos una instancia mirror más estable
+                val url = URL("https://jiosaavn-api-sigma-five.vercel.app/search/songs?query=$encoded")
                 
                 connection = url.openConnection() as HttpURLConnection
                 connection.apply {
                     connectTimeout = 15000
                     readTimeout = 15000
-                    // ESTO ES LO QUE EVITA EL ERROR DE HTML:
-                    setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
+                    // CABECERAS DE NAVEGADOR MÓVIL REAL
+                    setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 13; SM-S901B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.0.0 Mobile Safari/537.36")
                     setRequestProperty("Accept", "application/json")
                 }
 
-                if (connection.responseCode == 200) {
-                    val response = connection.inputStream.bufferedReader().readText()
-                    val json = JSONObject(response)
+                val responseCode = connection.responseCode
+                if (responseCode == 200) {
+                    val text = connection.inputStream.bufferedReader().readText()
+                    // Verificamos si es JSON antes de procesar
+                    if (!text.trim().startsWith("{")) throw Exception("Servidor envió web, no datos.")
+
+                    val json = JSONObject(text)
                     val data = json.getJSONObject("data")
                     val results = data.getJSONArray("results")
 
@@ -146,35 +150,34 @@ class MainActivity : AppCompatActivity() {
                         val title = track.getString("name").replace("&quot;", "\"")
                         val artist = track.getJSONObject("artists").getJSONArray("primary").getJSONObject(0).getString("name")
                         
-                        // Seleccionamos el índice [4] que es el archivo de 320kbps
-                        val downloadUrls = track.getJSONArray("downloadUrl")
-                        val hqAudioUrl = downloadUrls.getJSONObject(downloadUrls.length() - 1).getString("url")
+                        // Obtenemos el link de 320kbps (normalmente el último del array)
+                        val dUrl = track.getJSONArray("downloadUrl")
+                        val streamUrl = dUrl.getJSONObject(dUrl.length() - 1).getString("url")
                         
-                        // Imagen de alta resolución
-                        val images = track.getJSONArray("image")
-                        val coverUrl = images.getJSONObject(images.length() - 1).getString("url")
+                        val img = track.getJSONArray("image")
+                        val cover = img.getJSONObject(img.length() - 1).getString("url")
 
                         withContext(Dispatchers.Main) {
                             loader.visibility = View.GONE
                             albumArt.visibility = View.VISIBLE
-                            albumArt.load(coverUrl) { transformations(RoundedCornersTransformation(40f)) }
+                            albumArt.load(cover) { transformations(RoundedCornersTransformation(40f)) }
                             songInfo.text = "$title\n$artist"
-                            statusText.text = "¡FULL SONG! Reproduciendo a 320kbps"
+                            statusText.text = "¡LISTO! Reproduciendo Full HQ"
                             
-                            player?.setMediaItem(MediaItem.fromUri(hqAudioUrl))
+                            player?.setMediaItem(MediaItem.fromUri(streamUrl))
                             player?.prepare()
                             player?.play()
                         }
                     } else {
-                        throw Exception("No se encontró la canción")
+                        throw Exception("No hay resultados")
                     }
                 } else {
-                    throw Exception("Servidor saturado (${connection.responseCode})")
+                    throw Exception("Bloqueo de red: Error $responseCode")
                 }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
                     loader.visibility = View.GONE
-                    statusText.text = "Fallo: ${e.message}"
+                    statusText.text = "Reintenta: ${e.message}"
                 }
             } finally {
                 connection?.disconnect()
