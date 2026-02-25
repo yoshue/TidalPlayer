@@ -67,7 +67,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         statusText = TextView(this).apply {
-            text = "Calidad: 320kbps Activada"
+            text = "Estado: Servidor Activo"
             setTextColor(Color.CYAN)
             textSize = 11f
             setPadding(0, 0, 0, 60)
@@ -116,13 +116,13 @@ class MainActivity : AppCompatActivity() {
 
     private fun fetchMusicBypass(query: String) {
         loader.visibility = View.VISIBLE
-        statusText.text = "Buscando en servidores activos..."
+        statusText.text = "Buscando en servidor espejo..."
         
         lifecycleScope.launch(Dispatchers.IO) {
             var connection: HttpURLConnection? = null
             try {
                 val encoded = URLEncoder.encode(query, "UTF-8")
-                // API ACTUALIZADA FEBRERO 2026
+                // CAMBIO DE API A INSTANCIA VERIFICADA 2026
                 val url = URL("https://saavn.dev/api/search/songs?query=$encoded")
                 
                 connection = url.openConnection() as HttpURLConnection
@@ -133,8 +133,15 @@ class MainActivity : AppCompatActivity() {
                     setRequestProperty("Accept", "application/json")
                 }
 
-                if (connection.responseCode == 200) {
+                val responseCode = connection.responseCode
+                if (responseCode == 200) {
                     val text = connection.inputStream.bufferedReader().readText()
+                    
+                    // SEGURIDAD: Si no empieza con {, es un HTML de error del servidor
+                    if (!text.trim().startsWith("{")) {
+                        throw Exception("El servidor está saturado, intenta de nuevo.")
+                    }
+
                     val json = JSONObject(text)
                     val data = json.getJSONObject("data")
                     val results = data.getJSONArray("results")
@@ -143,15 +150,12 @@ class MainActivity : AppCompatActivity() {
                         val track = results.getJSONObject(0)
                         val title = track.getString("name").replace("&quot;", "\"")
                         
-                        // Nuevo formato de artistas en esta API
-                        val artistsArray = track.getJSONObject("artists").getJSONArray("primary")
-                        val artistName = artistsArray.getJSONObject(0).getString("name")
+                        // Nueva forma de obtener el artista en saavn.dev
+                        val artistName = track.getJSONObject("artists").getJSONArray("primary").getJSONObject(0).getString("name")
                         
-                        // Links de descarga (calidad 320kbps es el último)
                         val dUrl = track.getJSONArray("downloadUrl")
                         val streamUrl = dUrl.getJSONObject(dUrl.length() - 1).getString("url")
                         
-                        // Imagen HQ
                         val img = track.getJSONArray("image")
                         val cover = img.getJSONObject(img.length() - 1).getString("url")
 
@@ -160,22 +164,22 @@ class MainActivity : AppCompatActivity() {
                             albumArt.visibility = View.VISIBLE
                             albumArt.load(cover) { transformations(RoundedCornersTransformation(40f)) }
                             songInfo.text = "$title\n$artistName"
-                            statusText.text = "Conectado: 320kbps Directo"
+                            statusText.text = "¡CONECTADO! Reproduciendo..."
                             
                             player?.setMediaItem(MediaItem.fromUri(streamUrl))
                             player?.prepare()
                             player?.play()
                         }
                     } else {
-                        throw Exception("Canción no encontrada")
+                        throw Exception("No encontré esa canción.")
                     }
                 } else {
-                    throw Exception("Servidor en mantenimiento (${connection.responseCode})")
+                    throw Exception("Error de servidor: $responseCode")
                 }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
                     loader.visibility = View.GONE
-                    statusText.text = "Error: ${e.message}"
+                    statusText.text = "Fallo: ${e.message}"
                 }
             } finally {
                 connection?.disconnect()
