@@ -32,7 +32,6 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Forzamos protocolos modernos para evitar que la operadora corte el "handshake"
         System.setProperty("https.protocols", "TLSv1.2,TLSv1.3")
 
         val root = LinearLayout(this).apply {
@@ -117,30 +116,25 @@ class MainActivity : AppCompatActivity() {
 
     private fun fetchMusicBypass(query: String) {
         loader.visibility = View.VISIBLE
-        statusText.text = "Conectando al servidor HQ..."
+        statusText.text = "Buscando en servidores activos..."
         
         lifecycleScope.launch(Dispatchers.IO) {
             var connection: HttpURLConnection? = null
             try {
                 val encoded = URLEncoder.encode(query, "UTF-8")
-                // CAMBIO DE API: Usamos una instancia mirror más estable
-                val url = URL("https://jiosaavn-api-sigma-five.vercel.app/search/songs?query=$encoded")
+                // API ACTUALIZADA FEBRERO 2026
+                val url = URL("https://saavn.dev/api/search/songs?query=$encoded")
                 
                 connection = url.openConnection() as HttpURLConnection
                 connection.apply {
-                    connectTimeout = 15000
-                    readTimeout = 15000
-                    // CABECERAS DE NAVEGADOR MÓVIL REAL
-                    setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 13; SM-S901B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.0.0 Mobile Safari/537.36")
+                    connectTimeout = 10000
+                    readTimeout = 10000
+                    setRequestProperty("User-Agent", "Mozilla/5.0")
                     setRequestProperty("Accept", "application/json")
                 }
 
-                val responseCode = connection.responseCode
-                if (responseCode == 200) {
+                if (connection.responseCode == 200) {
                     val text = connection.inputStream.bufferedReader().readText()
-                    // Verificamos si es JSON antes de procesar
-                    if (!text.trim().startsWith("{")) throw Exception("Servidor envió web, no datos.")
-
                     val json = JSONObject(text)
                     val data = json.getJSONObject("data")
                     val results = data.getJSONArray("results")
@@ -148,12 +142,16 @@ class MainActivity : AppCompatActivity() {
                     if (results.length() > 0) {
                         val track = results.getJSONObject(0)
                         val title = track.getString("name").replace("&quot;", "\"")
-                        val artist = track.getJSONObject("artists").getJSONArray("primary").getJSONObject(0).getString("name")
                         
-                        // Obtenemos el link de 320kbps (normalmente el último del array)
+                        // Nuevo formato de artistas en esta API
+                        val artistsArray = track.getJSONObject("artists").getJSONArray("primary")
+                        val artistName = artistsArray.getJSONObject(0).getString("name")
+                        
+                        // Links de descarga (calidad 320kbps es el último)
                         val dUrl = track.getJSONArray("downloadUrl")
                         val streamUrl = dUrl.getJSONObject(dUrl.length() - 1).getString("url")
                         
+                        // Imagen HQ
                         val img = track.getJSONArray("image")
                         val cover = img.getJSONObject(img.length() - 1).getString("url")
 
@@ -161,23 +159,23 @@ class MainActivity : AppCompatActivity() {
                             loader.visibility = View.GONE
                             albumArt.visibility = View.VISIBLE
                             albumArt.load(cover) { transformations(RoundedCornersTransformation(40f)) }
-                            songInfo.text = "$title\n$artist"
-                            statusText.text = "¡LISTO! Reproduciendo Full HQ"
+                            songInfo.text = "$title\n$artistName"
+                            statusText.text = "Conectado: 320kbps Directo"
                             
                             player?.setMediaItem(MediaItem.fromUri(streamUrl))
                             player?.prepare()
                             player?.play()
                         }
                     } else {
-                        throw Exception("No hay resultados")
+                        throw Exception("Canción no encontrada")
                     }
                 } else {
-                    throw Exception("Bloqueo de red: Error $responseCode")
+                    throw Exception("Servidor en mantenimiento (${connection.responseCode})")
                 }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
                     loader.visibility = View.GONE
-                    statusText.text = "Reintenta: ${e.message}"
+                    statusText.text = "Error: ${e.message}"
                 }
             } finally {
                 connection?.disconnect()
