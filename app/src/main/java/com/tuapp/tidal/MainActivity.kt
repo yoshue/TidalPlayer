@@ -2,8 +2,9 @@ package com.tuapp.tidal
 
 import android.graphics.Color
 import android.graphics.Typeface
-import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
@@ -31,53 +32,51 @@ class MainActivity : AppCompatActivity() {
     private lateinit var artistName: TextView
     private lateinit var loader: ProgressBar
     private lateinit var statusText: TextView
+    private lateinit var seekBar: SeekBar
+    private val handler = Handler(Looper.getMainLooper())
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        
-        // Protocolo TLS para evitar cierres de conexión inesperados
         System.setProperty("https.protocols", "TLSv1.2,TLSv1.3")
 
-        // Fondo: Negro puro para el look minimalista
-        val root = RelativeLayout(this).apply {
-            setBackgroundColor(Color.BLACK)
-        }
+        // Fondo Negro Profundo
+        val root = RelativeLayout(this).apply { setBackgroundColor(Color.BLACK) }
 
-        // 1. Buscador sutil (solo una línea y una lupa)
-        val searchHeader = LinearLayout(this).apply {
+        // 1. Buscador Minimalista
+        val searchBox = LinearLayout(this).apply {
             id = View.generateViewId()
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setPadding(60, 100, 60, 40)
-            layoutParams = RelativeLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+            layoutParams = RelativeLayout.LayoutParams(-1, -2)
         }
 
-        val searchInput = EditText(this).apply {
-            hint = "Escribe canción o artista..."
-            setHintTextColor(Color.parseColor("#252525"))
+        val input = EditText(this).apply {
+            hint = "Escribe una canción..."
+            setHintTextColor(Color.parseColor("#333333"))
             setTextColor(Color.WHITE)
             setBackgroundColor(Color.TRANSPARENT)
             textSize = 14f
             typeface = Typeface.create("sans-serif-light", Typeface.NORMAL)
-            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            layoutParams = LinearLayout.LayoutParams(0, -2, 1f)
         }
 
-        val searchBtn = ImageButton(this).apply {
+        val searchIcon = ImageButton(this).apply {
             setImageResource(android.R.drawable.ic_menu_search)
             setColorFilter(Color.GRAY)
             setBackgroundColor(Color.TRANSPARENT)
         }
-        searchHeader.addView(searchInput)
-        searchHeader.addView(searchBtn)
+        searchBox.addView(input)
+        searchBox.addView(searchIcon)
 
-        // 2. Contenedor de la Obra (Arte y Texto)
-        val mainContent = LinearLayout(this).apply {
+        // 2. Arte del Álbum (Studio Style)
+        val content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
-            val params = RelativeLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
-            params.addRule(RelativeLayout.BELOW, searchHeader.id)
-            params.addRule(RelativeLayout.ABOVE, 2000)
-            layoutParams = params
+            val lp = RelativeLayout.LayoutParams(-1, -1)
+            lp.addRule(RelativeLayout.BELOW, searchBox.id)
+            lp.addRule(RelativeLayout.ABOVE, 3000)
+            layoutParams = lp
         }
 
         albumArt = ImageView(this).apply {
@@ -88,15 +87,15 @@ class MainActivity : AppCompatActivity() {
 
         songTitle = TextView(this).apply {
             setTextColor(Color.WHITE)
-            textSize = 22f
+            textSize = 20f
             typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
-            setPadding(40, 60, 40, 10)
+            setPadding(50, 60, 50, 5)
             gravity = Gravity.CENTER
         }
 
         artistName = TextView(this).apply {
             setTextColor(Color.GRAY)
-            textSize = 13f
+            textSize = 12f
             typeface = Typeface.create("sans-serif-light", Typeface.NORMAL)
             letterSpacing = 0.2f
             gravity = Gravity.CENTER
@@ -107,49 +106,54 @@ class MainActivity : AppCompatActivity() {
             indeterminateDrawable.setColorFilter(Color.WHITE, android.graphics.PorterDuff.Mode.SRC_IN)
         }
 
-        mainContent.addView(albumArt)
-        mainContent.addView(loader)
-        mainContent.addView(songTitle)
-        mainContent.addView(artistName)
+        content.addView(albumArt)
+        content.addView(loader)
+        content.addView(songTitle)
+        content.addView(artistName)
 
-        // 3. Controles (Abajo)
-        val controlsArea = LinearLayout(this).apply {
-            id = 2000
+        // 3. Controles y SeekBar (Abajo)
+        val footer = LinearLayout(this).apply {
+            id = 3000
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
-            setPadding(0, 0, 0, 150)
-            val params = RelativeLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
-            params.addRule(RelativeLayout.ALIGN_PARENT_BOTTOM)
-            layoutParams = params
+            setPadding(80, 0, 80, 150)
+            val lp = RelativeLayout.LayoutParams(-1, -2)
+            lp.addRule(RelativeLayout.ALIGN_PARENT_BOTTOM)
+            layoutParams = lp
+        }
+
+        seekBar = SeekBar(this).apply {
+            layoutParams = LinearLayout.LayoutParams(-1, -2)
+            progressDrawable.setColorFilter(Color.WHITE, android.graphics.PorterDuff.Mode.SRC_IN)
+            thumb.setColorFilter(Color.WHITE, android.graphics.PorterDuff.Mode.SRC_IN)
+            setPadding(0, 40, 0, 40)
         }
 
         btnPlayPause = ImageButton(this).apply {
             setImageResource(android.R.drawable.ic_media_play)
             setBackgroundColor(Color.TRANSPARENT)
             setColorFilter(Color.WHITE)
-            scaleX = 2.0f
-            scaleY = 2.0f
+            scaleX = 1.8f
+            scaleY = 1.8f
         }
 
         statusText = TextView(this).apply {
-            setTextColor(Color.parseColor("#151515")) // Casi invisible para no romper el minimalismo
+            setTextColor(Color.parseColor("#111111"))
             textSize = 8f
-            setPadding(0, 40, 0, 0)
+            setPadding(0, 30, 0, 0)
         }
 
-        controlsArea.addView(btnPlayPause)
-        controlsArea.addView(statusText)
+        footer.addView(seekBar)
+        footer.addView(btnPlayPause)
+        footer.addView(statusText)
 
-        root.addView(searchHeader)
-        root.addView(mainContent)
-        root.addView(controlsArea)
-
+        root.apply { addView(searchBox); addView(content); addView(footer) }
         setContentView(root)
         setupPlayer()
 
-        searchBtn.setOnClickListener {
-            val q = searchInput.text.toString()
-            if (q.isNotEmpty()) fetchFromYouTubeEngine(q)
+        searchIcon.setOnClickListener {
+            val q = input.text.toString()
+            if (q.isNotEmpty()) searchMusicYT(q)
         }
 
         btnPlayPause.setOnClickListener {
@@ -162,20 +166,37 @@ class MainActivity : AppCompatActivity() {
             addListener(object : Player.Listener {
                 override fun onIsPlayingChanged(isPlaying: Boolean) {
                     btnPlayPause.setImageResource(if (isPlaying) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play)
+                    if (isPlaying) updateProgress()
                 }
             })
         }
+        
+        seekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(s: SeekBar?, p: Int, fromUser: Boolean) {
+                if (fromUser) player?.seekTo(p.toLong())
+            }
+            override fun onStartTrackingTouch(s: SeekBar?) {}
+            override fun onStopTrackingTouch(s: SeekBar?) {}
+        })
     }
 
-    private fun fetchFromYouTubeEngine(query: String) {
+    private fun updateProgress() {
+        player?.let {
+            seekBar.max = it.duration.toInt()
+            seekBar.progress = it.currentPosition.toInt()
+            if (it.isPlaying) handler.postDelayed({ updateProgress() }, 1000)
+        }
+    }
+
+    private fun searchMusicYT(query: String) {
         loader.visibility = View.VISIBLE
-        statusText.text = "BUSCANDO..."
+        statusText.text = "SYNCING ENGINE..."
         
         lifecycleScope.launch(Dispatchers.IO) {
             try {
-                val encoded = URLEncoder.encode(query, "UTF-8")
-                // Usamos un proxy de YouTube Music ultra-estable
-                val searchUrl = URL("https://pipedapi.kavin.rocks/search?q=$encoded&filter=music_songs")
+                val q = URLEncoder.encode(query, "UTF-8")
+                // CAMBIAMOS A UNA INSTANCIA MÁS RÁPIDA (Piped.video es muy estable)
+                val searchUrl = URL("https://pipedapi.ducks.party/search?q=$q&filter=music_songs")
                 val conn = searchUrl.openConnection() as HttpURLConnection
                 conn.setRequestProperty("User-Agent", "Mozilla/5.0")
 
@@ -185,16 +206,16 @@ class MainActivity : AppCompatActivity() {
                     
                     if (items.length() > 0) {
                         val track = items.getJSONObject(0)
-                        val videoId = track.getString("url").split("v=")[1]
+                        val vId = track.getString("url").split("v=")[1]
                         val title = track.getString("title")
                         val artist = track.getString("uploaderName")
                         val cover = track.getString("thumbnail")
 
-                        // Segunda llamada para extraer el audio real (streaming)
-                        val streamUrl = "https://pipedapi.kavin.rocks/streams/$videoId"
-                        val streamConn = URL(streamUrl).openConnection() as HttpURLConnection
-                        val streamJson = JSONObject(streamConn.inputStream.bufferedReader().readText())
-                        val audioLink = streamJson.getJSONArray("audioStreams").getJSONObject(0).getString("url")
+                        // Obtener stream directo
+                        val sUrl = URL("https://pipedapi.ducks.party/streams/$vId")
+                        val sConn = sUrl.openConnection() as HttpURLConnection
+                        val sJson = JSONObject(sConn.inputStream.bufferedReader().readText())
+                        val audio = sJson.getJSONArray("audioStreams").getJSONObject(0).getString("url")
 
                         withContext(Dispatchers.Main) {
                             loader.visibility = View.GONE
@@ -202,9 +223,9 @@ class MainActivity : AppCompatActivity() {
                             albumArt.load(cover)
                             songTitle.text = title
                             artistName.text = artist.uppercase()
-                            statusText.text = "CONNECTED"
+                            statusText.text = "ENGINE: $vId"
                             
-                            player?.setMediaItem(MediaItem.fromUri(audioLink))
+                            player?.setMediaItem(MediaItem.fromUri(audio))
                             player?.prepare()
                             player?.play()
                         }
@@ -213,7 +234,7 @@ class MainActivity : AppCompatActivity() {
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
                     loader.visibility = View.GONE
-                    statusText.text = "ERROR DE RED"
+                    statusText.text = "TIMEOUT - REINTENTA"
                 }
             }
         }
@@ -222,5 +243,6 @@ class MainActivity : AppCompatActivity() {
     override fun onDestroy() {
         super.onDestroy()
         player?.release()
+        handler.removeCallbacksAndMessages(null)
     }
 }
