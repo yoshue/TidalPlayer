@@ -32,7 +32,7 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Mantenemos la protección TLS para Huawei
+        // Seguridad TLS para evitar bloqueos de operadora
         System.setProperty("https.protocols", "TLSv1.2,TLSv1.3")
 
         val root = LinearLayout(this).apply {
@@ -43,7 +43,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         val searchBar = EditText(this).apply {
-            hint = "Buscar en Deezer..."
+            hint = "Canción completa (320kbps)..."
             setHintTextColor(Color.GRAY)
             setTextColor(Color.WHITE)
             setBackgroundColor(Color.parseColor("#121212"))
@@ -51,7 +51,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         val btnSearch = Button(this).apply {
-            text = "PROBAR SONIDO"
+            text = "BUSCAR HQ"
             setTextColor(Color.WHITE)
             setBackgroundColor(Color.TRANSPARENT)
         }
@@ -68,8 +68,8 @@ class MainActivity : AppCompatActivity() {
         }
 
         statusText = TextView(this).apply {
-            text = "API: Deezer Public"
-            setTextColor(Color.MAGENTA)
+            text = "Calidad: Extreme 320kbps"
+            setTextColor(Color.parseColor("#1DB954"))
             textSize = 11f
             setPadding(0, 0, 0, 60)
         }
@@ -97,7 +97,7 @@ class MainActivity : AppCompatActivity() {
 
         btnSearch.setOnClickListener {
             val q = searchBar.text.toString()
-            if (q.isNotEmpty()) searchOnDeezer(q)
+            if (q.isNotEmpty()) searchFullHQ(q)
         }
 
         btnPlayPause.setOnClickListener {
@@ -115,53 +115,61 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun searchOnDeezer(query: String) {
+    private fun searchFullHQ(query: String) {
         loader.visibility = View.VISIBLE
-        statusText.text = "Consultando Deezer..."
+        statusText.text = "Obteniendo audio HQ..."
         
         lifecycleScope.launch(Dispatchers.IO) {
             var connection: HttpURLConnection? = null
             try {
                 val encoded = URLEncoder.encode(query, "UTF-8")
-                // URL DE DEEZER: Súper estable y devuelve JSON real
-                val url = URL("https://api.deezer.com/search?q=$encoded&limit=1")
+                // Usamos el endpoint global de Saavn
+                val url = URL("https://saavn.dev/api/search/songs?query=$encoded&limit=1")
                 
                 connection = url.openConnection() as HttpURLConnection
                 connection.apply {
                     connectTimeout = 15000
                     readTimeout = 15000
-                    setRequestProperty("User-Agent", "Mozilla/5.0")
+                    // ESTO ES LO QUE EVITA EL ERROR DE HTML:
+                    setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
                     setRequestProperty("Accept", "application/json")
                 }
 
                 if (connection.responseCode == 200) {
                     val response = connection.inputStream.bufferedReader().readText()
                     val json = JSONObject(response)
-                    val data = json.getJSONArray("data")
+                    val data = json.getJSONObject("data")
+                    val results = data.getJSONArray("results")
 
-                    if (data.length() > 0) {
-                        val track = data.getJSONObject(0)
-                        val title = track.getString("title")
-                        val artist = track.getJSONObject("artist").getString("name")
-                        val previewUrl = track.getString("preview") // Audio de alta calidad
-                        val coverUrl = track.getJSONObject("album").getString("cover_xl")
+                    if (results.length() > 0) {
+                        val track = results.getJSONObject(0)
+                        val title = track.getString("name").replace("&quot;", "\"")
+                        val artist = track.getJSONObject("artists").getJSONArray("primary").getJSONObject(0).getString("name")
+                        
+                        // Seleccionamos el índice [4] que es el archivo de 320kbps
+                        val downloadUrls = track.getJSONArray("downloadUrl")
+                        val hqAudioUrl = downloadUrls.getJSONObject(downloadUrls.length() - 1).getString("url")
+                        
+                        // Imagen de alta resolución
+                        val images = track.getJSONArray("image")
+                        val coverUrl = images.getJSONObject(images.length() - 1).getString("url")
 
                         withContext(Dispatchers.Main) {
                             loader.visibility = View.GONE
                             albumArt.visibility = View.VISIBLE
                             albumArt.load(coverUrl) { transformations(RoundedCornersTransformation(40f)) }
                             songInfo.text = "$title\n$artist"
-                            statusText.text = "¡CONECTADO! Reproduciendo..."
+                            statusText.text = "¡FULL SONG! Reproduciendo a 320kbps"
                             
-                            player?.setMediaItem(MediaItem.fromUri(previewUrl))
+                            player?.setMediaItem(MediaItem.fromUri(hqAudioUrl))
                             player?.prepare()
                             player?.play()
                         }
                     } else {
-                        throw Exception("No se encontró nada")
+                        throw Exception("No se encontró la canción")
                     }
                 } else {
-                    throw Exception("Error del servidor: ${connection.responseCode}")
+                    throw Exception("Servidor saturado (${connection.responseCode})")
                 }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
