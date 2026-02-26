@@ -1,4 +1,4 @@
-package com.tuapp.tidal
+nopackage com.tuapp.tidal
 
 import android.app.Dialog
 import android.graphics.*
