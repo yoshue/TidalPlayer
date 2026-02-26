@@ -21,8 +21,8 @@ import coil.transform.RoundedCornersTransformation
 import kotlinx.coroutines.*
 import org.json.JSONObject
 import java.net.URL
+import kotlin.math.abs
 
-// Modelos de datos estables
 data class Song(val id: String, val title: String, val artist: String, val artistId: String, val albumId: String, val cover: String, val preview: String, val duration: Int = 0)
 data class Album(val id: String, val title: String, val cover: String, val artist: String)
 
@@ -39,6 +39,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var miniPlayer: CardView
     private lateinit var miniTitle: TextView
     private var currentSong: Song? = null
+    private var currentIndex: Int = -1
     
     private var fullSeekBar: SeekBar? = null
     private var timeElapsedTxt: TextView? = null
@@ -49,27 +50,26 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         val root = RelativeLayout(this).apply { setBackgroundColor(Color.BLACK) }
 
-        // HEADER
         val header = LinearLayout(this).apply {
             id = View.generateViewId()
             orientation = LinearLayout.VERTICAL
-            setPadding(50, 100, 50, 40)
+            setPadding(50, 80, 50, 40)
         }
-        val titleMain = TextView(this).apply { text = "Explorar v3.1"; setTextColor(Color.WHITE); textSize = 34f; typeface = Typeface.DEFAULT_BOLD }
+        val titleMain = TextView(this).apply { text = "Explorar"; setTextColor(Color.WHITE); textSize = 32f; typeface = Typeface.DEFAULT_BOLD }
         
         val searchBox = RelativeLayout(this).apply {
-            background = android.graphics.drawable.GradientDrawable().apply { setColor(Color.parseColor("#121212")); cornerRadius = 30f }
-            setPadding(40, 15, 40, 15)
-            layoutParams = LinearLayout.LayoutParams(-1, -2).apply { topMargin = 40 }
+            background = android.graphics.drawable.GradientDrawable().apply { setColor(Color.parseColor("#1A1A1A")); cornerRadius = 25f }
+            setPadding(40, 10, 40, 10)
+            layoutParams = LinearLayout.LayoutParams(-1, -2).apply { topMargin = 30 }
         }
         val input = EditText(this).apply {
-            id = View.generateViewId(); hint = "Buscar artista..."; setHintTextColor(Color.GRAY); setTextColor(Color.WHITE); background = null
+            id = View.generateViewId(); hint = "Buscar..."; setHintTextColor(Color.GRAY); setTextColor(Color.WHITE); background = null
             imeOptions = EditorInfo.IME_ACTION_SEARCH; inputType = android.text.InputType.TYPE_CLASS_TEXT
             layoutParams = RelativeLayout.LayoutParams(-1, -2).apply { addRule(RelativeLayout.START_OF, 99) }
         }
         val searchIcon = ImageView(this).apply {
-            id = 99; setImageResource(android.R.drawable.ic_menu_search); setColorFilter(Color.GRAY)
-            layoutParams = RelativeLayout.LayoutParams(70, 70).apply { addRule(RelativeLayout.ALIGN_PARENT_END); addRule(RelativeLayout.CENTER_VERTICAL) }
+            id = 99; setImageResource(android.R.drawable.ic_menu_search); setColorFilter(Color.WHITE)
+            layoutParams = RelativeLayout.LayoutParams(60, 60).apply { addRule(RelativeLayout.ALIGN_PARENT_END); addRule(RelativeLayout.CENTER_VERTICAL) }
             setOnClickListener { searchEverything(input.text.toString()) }
         }
         searchBox.addView(input); searchBox.addView(searchIcon); header.addView(titleMain); header.addView(searchBox)
@@ -77,9 +77,9 @@ class MainActivity : AppCompatActivity() {
         val scroll = NestedScrollView(this).apply {
             layoutParams = RelativeLayout.LayoutParams(-1, -1).apply { addRule(RelativeLayout.BELOW, header.id) }
         }
-        val content = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(50, 0, 50, 400) }
+        val content = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(50, 20, 50, 400) }
         
-        content.addView(createLabel("Álbumes Destacados"))
+        content.addView(createLabel("Álbumes"))
         val rvAlbums = RecyclerView(this).apply { layoutManager = LinearLayoutManager(this@MainActivity, LinearLayoutManager.HORIZONTAL, false) }
         albumAdapter = AlbumAdapter(albumList) { openAlbumDetail(it) }
         rvAlbums.adapter = albumAdapter
@@ -87,7 +87,10 @@ class MainActivity : AppCompatActivity() {
 
         content.addView(createLabel("Canciones"))
         val rvSongs = RecyclerView(this).apply { layoutManager = LinearLayoutManager(this@MainActivity); isNestedScrollingEnabled = false }
-        songAdapter = SongAdapter(songList) { playSong(it) }
+        songAdapter = SongAdapter(songList) { s -> 
+            currentIndex = songList.indexOf(s)
+            playSong(s) 
+        }
         rvSongs.adapter = songAdapter
         content.addView(rvSongs)
 
@@ -100,7 +103,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun createLabel(t: String) = TextView(this).apply {
-        text = t; setTextColor(Color.WHITE); textSize = 22f; setPadding(0, 50, 0, 20); typeface = Typeface.DEFAULT_BOLD
+        text = t; setTextColor(Color.WHITE); textSize = 20f; setPadding(0, 40, 0, 20); typeface = Typeface.DEFAULT_BOLD
     }
 
     private fun setupPlayer() {
@@ -121,7 +124,6 @@ class MainActivity : AppCompatActivity() {
 
     private fun initAudioEngine(sessionId: Int) {
         try {
-            // Configuración compatible con API 28+ (Android 9 o superior)
             val config = DynamicsProcessing.Config.Builder(0, 1, true, 10, false, 0, false, 0, true).build()
             dynamicsProcessing = DynamicsProcessing(0, sessionId, config).apply { enabled = true }
         } catch (e: Exception) { e.printStackTrace() }
@@ -154,6 +156,20 @@ class MainActivity : AppCompatActivity() {
         btnPlayMini.setImageResource(android.R.drawable.ic_media_pause)
     }
 
+    private fun skipNext() {
+        if (currentIndex < songList.size - 1) {
+            currentIndex++
+            playSong(songList[currentIndex])
+        }
+    }
+
+    private fun skipPrev() {
+        if (currentIndex > 0) {
+            currentIndex--
+            playSong(songList[currentIndex])
+        }
+    }
+
     private fun searchEverything(q: String) {
         lifecycleScope.launch(Dispatchers.IO) {
             try {
@@ -181,15 +197,15 @@ class MainActivity : AppCompatActivity() {
 
     private fun createMiniPlayer(): View {
         miniPlayer = CardView(this).apply {
-            radius = 40f; setCardBackgroundColor(Color.parseColor("#151515")); visibility = View.GONE
-            layoutParams = RelativeLayout.LayoutParams(-1, -2).apply { addRule(RelativeLayout.ALIGN_PARENT_BOTTOM); setMargins(30, 0, 30, 40) }
+            radius = 30f; setCardBackgroundColor(Color.parseColor("#121212")); visibility = View.GONE
+            layoutParams = RelativeLayout.LayoutParams(-1, -2).apply { addRule(RelativeLayout.ALIGN_PARENT_BOTTOM); setMargins(25, 0, 25, 30) }
             setOnClickListener { openFullPlayer() }
         }
         val lay = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         miniSeekBar = SeekBar(this).apply { setPadding(0,0,0,0); thumb = null; progressDrawable.setColorFilter(Color.CYAN, PorterDuff.Mode.SRC_IN) }
-        val row = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL; setPadding(40, 20, 40, 20) }
-        val img = ImageView(this).apply { id = 777; layoutParams = LinearLayout.LayoutParams(110, 110) }
-        miniTitle = TextView(this).apply { setTextColor(Color.WHITE); setPadding(30, 0, 0, 0); layoutParams = LinearLayout.LayoutParams(0, -2, 1f); maxLines = 1 }
+        val row = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL; setPadding(30, 15, 30, 15) }
+        val img = ImageView(this).apply { id = 777; layoutParams = LinearLayout.LayoutParams(100, 100) }
+        miniTitle = TextView(this).apply { setTextColor(Color.WHITE); setPadding(25, 0, 0, 0); layoutParams = LinearLayout.LayoutParams(0, -2, 1f); maxLines = 1 }
         btnPlayMini = ImageButton(this).apply { setImageResource(android.R.drawable.ic_media_play); setBackgroundColor(0); setColorFilter(Color.WHITE); setOnClickListener { if(player?.isPlaying == true) player?.pause() else player?.play() } }
         row.addView(img); row.addView(miniTitle); row.addView(btnPlayMini); lay.addView(miniSeekBar); lay.addView(row); miniPlayer.addView(lay)
         return miniPlayer
@@ -199,48 +215,97 @@ class MainActivity : AppCompatActivity() {
         val d = Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen)
         val v = RelativeLayout(this).apply { setBackgroundColor(Color.BLACK) }
         
-        // CORRECCIÓN: Eliminamos BlurTransformation externa para evitar error de compilación
-        val bg = ImageView(this).apply { 
-            layoutParams = RelativeLayout.LayoutParams(-1,-1); alpha = 0.4f; scaleType = ImageView.ScaleType.CENTER_CROP
-            load(currentSong?.cover)
-        }
+        val bg = ImageView(this).apply { layoutParams = RelativeLayout.LayoutParams(-1,-1); alpha = 0.4f; scaleType = ImageView.ScaleType.CENTER_CROP; load(currentSong?.cover) }
         v.addView(bg)
 
         val btnClose = ImageButton(this).apply { setImageResource(android.R.drawable.ic_menu_close_clear_cancel); setBackgroundColor(0); setColorFilter(Color.WHITE); setOnClickListener { d.dismiss() } }
+        val btnMenu = ImageButton(this).apply { 
+            setImageResource(android.R.drawable.ic_menu_preferences); setBackgroundColor(0); setColorFilter(Color.WHITE)
+            layoutParams = RelativeLayout.LayoutParams(120, 120).apply { addRule(RelativeLayout.ALIGN_PARENT_END); setMargins(20, 20, 20, 0) }
+            setOnClickListener { showPopMenu(it) }
+        }
+        v.addView(btnClose); v.addView(btnMenu)
         
         val flipContainer = FrameLayout(this).apply {
             id = View.generateViewId()
-            layoutParams = RelativeLayout.LayoutParams(850, 850).apply { addRule(RelativeLayout.CENTER_IN_PARENT); bottomMargin = 300 }
+            layoutParams = RelativeLayout.LayoutParams(850, 850).apply { addRule(RelativeLayout.CENTER_IN_PARENT); bottomMargin = 280 }
         }
-        val front = CardView(this).apply { radius = 50f; addView(ImageView(context).apply { scaleType = ImageView.ScaleType.CENTER_CROP; load(currentSong?.cover) }) }
-        val back = CardView(this).apply { 
-            radius = 50f; visibility = View.GONE; setCardBackgroundColor(Color.parseColor("#1A1A1A"))
-            addView(TextView(context).apply { text = "LADO B\nTracklist"; setTextColor(Color.GRAY); gravity = Gravity.CENTER })
-        }
+        val front = CardView(this).apply { radius = 40f; addView(ImageView(context).apply { scaleType = ImageView.ScaleType.CENTER_CROP; load(currentSong?.cover) }) }
+        val back = CardView(this).apply { radius = 40f; visibility = View.GONE; setCardBackgroundColor(Color.parseColor("#121212")) }
+        
         flipContainer.addView(back); flipContainer.addView(front)
-        flipContainer.setOnClickListener {
-            val (outV, inV) = if (front.visibility == View.VISIBLE) front to back else back to front
-            outV.animate().rotationY(90f).setDuration(250).withEndAction { outV.visibility = View.GONE; inV.rotationY = -90f; inV.visibility = View.VISIBLE; inV.animate().rotationY(0f).setDuration(250).start() }.start()
-        }
+
+        // --- GESTOS DE SLIDE (SWIPE) ---
+        val gestureDetector = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
+            override fun onFling(e1: MotionEvent?, e2: MotionEvent, velocityX: Float, velocityY: Float): Boolean {
+                val diffX = e2.x - (e1?.x ?: 0f)
+                if (abs(diffX) > 100) {
+                    if (diffX > 0) skipPrev() else skipNext()
+                    // Actualizar UI del diálogo
+                    front.findViewById<ImageView>(0)?.load(currentSong?.cover)
+                    return true
+                }
+                return false
+            }
+            override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
+                val (outV, inV) = if (front.visibility == View.VISIBLE) front to back else back to front
+                outV.animate().rotationY(90f).setDuration(200).withEndAction { outV.visibility = View.GONE; inV.rotationY = -90f; inV.visibility = View.VISIBLE; inV.animate().rotationY(0f).setDuration(200).start() }.start()
+                return true
+            }
+        })
+        flipContainer.setOnTouchListener { _, event -> gestureDetector.onTouchEvent(event) }
 
         val info = LinearLayout(this).apply { 
-            orientation = LinearLayout.VERTICAL; layoutParams = RelativeLayout.LayoutParams(-1,-2).apply { addRule(RelativeLayout.BELOW, flipContainer.id); topMargin = 50; setMargins(60,0,60,0) }
-            addView(TextView(context).apply { text = currentSong?.title; setTextColor(Color.WHITE); textSize = 26f; typeface = Typeface.DEFAULT_BOLD })
-            addView(TextView(context).apply { text = currentSong?.artist; setTextColor(Color.CYAN); textSize = 18f })
+            id = View.generateViewId()
+            orientation = LinearLayout.VERTICAL; layoutParams = RelativeLayout.LayoutParams(-1,-2).apply { addRule(RelativeLayout.BELOW, flipContainer.id); topMargin = 40; setMargins(70,0,70,0) }
+            addView(TextView(context).apply { id = 101; text = currentSong?.title; setTextColor(Color.WHITE); textSize = 24f; typeface = Typeface.DEFAULT_BOLD; maxLines = 1 })
+            addView(TextView(context).apply { id = 102; text = currentSong?.artist; setTextColor(Color.CYAN); textSize = 17f })
         }
 
-        val controls = RelativeLayout(this).apply { layoutParams = RelativeLayout.LayoutParams(-1,-2).apply { addRule(RelativeLayout.ALIGN_PARENT_BOTTOM); bottomMargin = 100; setMargins(60,0,60,0) } }
+        // --- CONTROLES CON BORNES (ATRÁS/ADELANTE) ---
+        val controls = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+            layoutParams = RelativeLayout.LayoutParams(-1, -2).apply { addRule(RelativeLayout.ALIGN_PARENT_BOTTOM); bottomMargin = 80; setMargins(70,0,70,0) }
+        }
+
+        val btnPrev = ImageButton(this).apply { setImageResource(android.R.drawable.ic_media_previous); setBackgroundColor(0); setColorFilter(Color.WHITE); setPadding(30,30,30,30); setOnClickListener { skipPrev() } }
+        val btnPlay = ImageButton(this).apply { 
+            setImageResource(if(player?.isPlaying == true) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play)
+            layoutParams = LinearLayout.LayoutParams(180, 180).apply { setMargins(40,0,40,0) }
+            setBackgroundColor(0); setColorFilter(Color.WHITE); scaleType = ImageView.ScaleType.FIT_CENTER
+            setOnClickListener { if(player?.isPlaying == true) { player?.pause(); setImageResource(android.R.drawable.ic_media_play) } else { player?.play(); setImageResource(android.R.drawable.ic_media_pause) } }
+        }
+        val btnNext = ImageButton(this).apply { setImageResource(android.R.drawable.ic_media_next); setBackgroundColor(0); setColorFilter(Color.WHITE); setPadding(30,30,30,30); setOnClickListener { skipNext() } }
+
+        controls.addView(View(this).apply { layoutParams = LinearLayout.LayoutParams(0, 1, 1f) })
+        controls.addView(btnPrev); controls.addView(btnPlay); controls.addView(btnNext)
+        controls.addView(View(this).apply { layoutParams = LinearLayout.LayoutParams(0, 1, 1f) })
+
+        val seekLayout = RelativeLayout(this).apply { layoutParams = RelativeLayout.LayoutParams(-1,-2).apply { addRule(RelativeLayout.ABOVE, controls.id); bottomMargin = 40; setMargins(70,0,70,0) } }
         fullSeekBar = SeekBar(this).apply { id = View.generateViewId(); progressDrawable.setColorFilter(Color.CYAN, PorterDuff.Mode.SRC_IN) }
         timeElapsedTxt = TextView(this).apply { text = "0:00"; setTextColor(Color.WHITE); layoutParams = RelativeLayout.LayoutParams(-2,-2).apply { addRule(RelativeLayout.BELOW, fullSeekBar!!.id) } }
         timeTotalTxt = TextView(this).apply { text = "0:00"; setTextColor(Color.WHITE); layoutParams = RelativeLayout.LayoutParams(-2,-2).apply { addRule(RelativeLayout.BELOW, fullSeekBar!!.id); addRule(RelativeLayout.ALIGN_PARENT_END) } }
-        val btnPlay = ImageButton(this).apply { 
-            setImageResource(android.R.drawable.ic_media_play); layoutParams = RelativeLayout.LayoutParams(180, 180).apply { addRule(RelativeLayout.BELOW, timeElapsedTxt!!.id); addRule(RelativeLayout.CENTER_HORIZONTAL); topMargin = 40 }
-            background = null; setOnClickListener { if(player?.isPlaying == true) player?.pause() else player?.play() }
-        }
-        controls.addView(fullSeekBar); controls.addView(timeElapsedTxt); controls.addView(timeTotalTxt); controls.addView(btnPlay)
+        seekLayout.addView(fullSeekBar); seekLayout.addView(timeElapsedTxt); seekLayout.addView(timeTotalTxt)
         
-        v.addView(btnClose); v.addView(flipContainer); v.addView(info); v.addView(controls)
+        v.addView(flipContainer); v.addView(info); v.addView(seekLayout); v.addView(controls)
         d.setContentView(v); d.show()
+
+        // Listener para actualizar info cuando cambia la canción (por gestos o botones)
+        player?.addListener(object : Player.Listener {
+            override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                v.findViewById<TextView>(101)?.text = currentSong?.title
+                v.findViewById<TextView>(102)?.text = currentSong?.artist
+                front.findViewById<ImageView>(0)?.load(currentSong?.cover)
+                bg.load(currentSong?.cover)
+            }
+        })
+    }
+
+    private fun showPopMenu(v: View) {
+        val p = PopupMenu(this, v)
+        p.menu.add("Ecualizador").setOnMenuItemClickListener { true }
+        p.menu.add("Letra").setOnMenuItemClickListener { true }
+        p.show()
     }
 
     private fun openAlbumDetail(a: Album) {
@@ -249,7 +314,11 @@ class MainActivity : AppCompatActivity() {
         v.addView(TextView(this).apply { text = a.title; setTextColor(Color.WHITE); textSize = 24f; setPadding(0,0,0,40) })
         val rv = RecyclerView(this).apply { layoutManager = LinearLayoutManager(this@MainActivity) }
         val list = mutableListOf<Song>()
-        val adapter = SongAdapter(list) { playSong(it); d.dismiss() }
+        val adapter = SongAdapter(list) { s -> 
+            currentIndex = songList.indexOf(s)
+            playSong(s)
+            d.dismiss() 
+        }
         rv.adapter = adapter
         lifecycleScope.launch(Dispatchers.IO) {
             try {
@@ -260,7 +329,7 @@ class MainActivity : AppCompatActivity() {
                     list.add(Song(o.getString("id"), o.getString("title"), a.artist, "", a.id, a.cover, o.getString("preview"), o.getInt("duration")))
                 }
                 withContext(Dispatchers.Main) { adapter.notifyDataSetChanged() }
-            } catch(e: Exception) { e.printStackTrace() }
+            } catch(e: Exception) { }
         }
         v.addView(rv); d.setContentView(v); d.show()
     }
@@ -268,20 +337,20 @@ class MainActivity : AppCompatActivity() {
     inner class SongAdapter(val list: List<Song>, val onClick: (Song) -> Unit) : RecyclerView.Adapter<SongAdapter.VH>() {
         inner class VH(v: View) : RecyclerView.ViewHolder(v)
         override fun onCreateViewHolder(p: ViewGroup, t: Int): VH {
-            val root = RelativeLayout(p.context).apply { setPadding(0, 20, 0, 20); isClickable = true; isFocusable = true }
-            val img = ImageView(p.context).apply { id = 10; layoutParams = RelativeLayout.LayoutParams(120, 120) }
+            val root = RelativeLayout(p.context).apply { setPadding(0, 20, 0, 20) }
+            val img = ImageView(p.context).apply { id = 10; layoutParams = RelativeLayout.LayoutParams(110, 110) }
             val txts = LinearLayout(p.context).apply { 
-                orientation = LinearLayout.VERTICAL; setPadding(30, 0, 0, 0)
+                orientation = LinearLayout.VERTICAL; setPadding(25, 0, 0, 0)
                 layoutParams = RelativeLayout.LayoutParams(-1, -2).apply { addRule(RelativeLayout.RIGHT_OF, 10) }
-                addView(TextView(p.context).apply { id = 11; setTextColor(Color.WHITE); textSize = 16f; typeface = Typeface.DEFAULT_BOLD })
-                addView(TextView(p.context).apply { id = 12; setTextColor(Color.GRAY); textSize = 14f })
+                addView(TextView(p.context).apply { id = 11; setTextColor(Color.WHITE); textSize = 15f; typeface = Typeface.DEFAULT_BOLD; maxLines = 1 })
+                addView(TextView(p.context).apply { id = 12; setTextColor(Color.GRAY); textSize = 13f })
             }
             root.addView(img); root.addView(txts)
             return VH(root)
         }
         override fun onBindViewHolder(h: VH, p: Int) {
             val s = list[p]
-            h.itemView.findViewById<ImageView>(10).load(s.cover) { transformations(RoundedCornersTransformation(15f)) }
+            h.itemView.findViewById<ImageView>(10).load(s.cover) { transformations(RoundedCornersTransformation(12f)) }
             h.itemView.findViewById<TextView>(11).text = s.title
             h.itemView.findViewById<TextView>(12).text = s.artist
             h.itemView.setOnClickListener { onClick(s) }
@@ -289,21 +358,4 @@ class MainActivity : AppCompatActivity() {
         override fun getItemCount() = list.size
     }
 
-    inner class AlbumAdapter(val list: List<Album>, val onClick: (Album) -> Unit) : RecyclerView.Adapter<AlbumAdapter.VH>() {
-        inner class VH(v: View) : RecyclerView.ViewHolder(v)
-        override fun onCreateViewHolder(p: ViewGroup, t: Int): VH {
-            val root = LinearLayout(p.context).apply { orientation = LinearLayout.VERTICAL; setPadding(0, 0, 40, 0) }
-            val img = ImageView(p.context).apply { id = 20; layoutParams = LinearLayout.LayoutParams(400, 400) }
-            val txt = TextView(p.context).apply { id = 21; setTextColor(Color.WHITE); setPadding(0, 10, 0, 0); maxLines = 1; layoutParams = LinearLayout.LayoutParams(400, -2) }
-            root.addView(img); root.addView(txt)
-            return VH(root)
-        }
-        override fun onBindViewHolder(h: VH, p: Int) {
-            val a = list[p]
-            h.itemView.findViewById<ImageView>(20).load(a.cover) { transformations(RoundedCornersTransformation(25f)) }
-            h.itemView.findViewById<TextView>(21).text = a.title
-            h.itemView.setOnClickListener { onClick(a) }
-        }
-        override fun getItemCount() = list.size
-    }
-}
+    inner class AlbumAdapter(val list: List<Album>,
