@@ -17,13 +17,12 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import coil.load
-import coil.transform.BlurTransformation
 import coil.transform.RoundedCornersTransformation
 import kotlinx.coroutines.*
 import org.json.JSONObject
 import java.net.URL
 
-// Modelos de datos
+// Modelos de datos estables
 data class Song(val id: String, val title: String, val artist: String, val artistId: String, val albumId: String, val cover: String, val preview: String, val duration: Int = 0)
 data class Album(val id: String, val title: String, val cover: String, val artist: String)
 
@@ -56,7 +55,7 @@ class MainActivity : AppCompatActivity() {
             orientation = LinearLayout.VERTICAL
             setPadding(50, 100, 50, 40)
         }
-        val titleMain = TextView(this).apply { text = "Explorar v3"; setTextColor(Color.WHITE); textSize = 34f; typeface = Typeface.DEFAULT_BOLD }
+        val titleMain = TextView(this).apply { text = "Explorar v3.1"; setTextColor(Color.WHITE); textSize = 34f; typeface = Typeface.DEFAULT_BOLD }
         
         val searchBox = RelativeLayout(this).apply {
             background = android.graphics.drawable.GradientDrawable().apply { setColor(Color.parseColor("#121212")); cornerRadius = 30f }
@@ -64,7 +63,7 @@ class MainActivity : AppCompatActivity() {
             layoutParams = LinearLayout.LayoutParams(-1, -2).apply { topMargin = 40 }
         }
         val input = EditText(this).apply {
-            id = View.generateViewId(); hint = "Buscar..."; setHintTextColor(Color.GRAY); setTextColor(Color.WHITE); background = null
+            id = View.generateViewId(); hint = "Buscar artista..."; setHintTextColor(Color.GRAY); setTextColor(Color.WHITE); background = null
             imeOptions = EditorInfo.IME_ACTION_SEARCH; inputType = android.text.InputType.TYPE_CLASS_TEXT
             layoutParams = RelativeLayout.LayoutParams(-1, -2).apply { addRule(RelativeLayout.START_OF, 99) }
         }
@@ -75,13 +74,12 @@ class MainActivity : AppCompatActivity() {
         }
         searchBox.addView(input); searchBox.addView(searchIcon); header.addView(titleMain); header.addView(searchBox)
 
-        // CONTENT
         val scroll = NestedScrollView(this).apply {
             layoutParams = RelativeLayout.LayoutParams(-1, -1).apply { addRule(RelativeLayout.BELOW, header.id) }
         }
         val content = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(50, 0, 50, 400) }
         
-        content.addView(createLabel("Álbumes"))
+        content.addView(createLabel("Álbumes Destacados"))
         val rvAlbums = RecyclerView(this).apply { layoutManager = LinearLayoutManager(this@MainActivity, LinearLayoutManager.HORIZONTAL, false) }
         albumAdapter = AlbumAdapter(albumList) { openAlbumDetail(it) }
         rvAlbums.adapter = albumAdapter
@@ -113,7 +111,7 @@ class MainActivity : AppCompatActivity() {
                     val dur = player?.duration?.toInt() ?: 0
                     miniSeekBar.max = dur
                     fullSeekBar?.max = dur
-                    timeTotalTxt?.text = formatTime(dur / 1000L)
+                    timeTotalTxt?.text = formatTime(dur.toLong() / 1000L)
                     if (dynamicsProcessing == null) initAudioEngine(player!!.audioSessionId)
                     updateProgressTask()
                 }
@@ -121,21 +119,11 @@ class MainActivity : AppCompatActivity() {
         })
     }
 
-    // CORRECCIÓN: Parámetros del Ecualizador según API de Android
     private fun initAudioEngine(sessionId: Int) {
         try {
-            val configBuilder = DynamicsProcessing.Config.Builder(
-                0, // variant
-                1, // channelCount
-                true, // preEqInUse
-                10, // preEqBandCount
-                false, // mbcInUse
-                0, // mbcBandCount
-                false, // postEqInUse
-                0, // postEqBandCount
-                true // limiterInUse
-            )
-            dynamicsProcessing = DynamicsProcessing(0, sessionId, configBuilder.build()).apply { enabled = true }
+            // Configuración compatible con API 28+ (Android 9 o superior)
+            val config = DynamicsProcessing.Config.Builder(0, 1, true, 10, false, 0, false, 0, true).build()
+            dynamicsProcessing = DynamicsProcessing(0, sessionId, config).apply { enabled = true }
         } catch (e: Exception) { e.printStackTrace() }
     }
 
@@ -146,7 +134,7 @@ class MainActivity : AppCompatActivity() {
                     val p = it.currentPosition.toInt()
                     miniSeekBar.progress = p
                     fullSeekBar?.progress = p
-                    timeElapsedTxt?.text = formatTime(p / 1000L)
+                    timeElapsedTxt?.text = formatTime(p.toLong() / 1000L)
                 }
                 delay(1000)
             }
@@ -211,15 +199,14 @@ class MainActivity : AppCompatActivity() {
         val d = Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen)
         val v = RelativeLayout(this).apply { setBackgroundColor(Color.BLACK) }
         
-        val bg = ImageView(this).apply { layoutParams = RelativeLayout.LayoutParams(-1,-1); alpha = 0.3f; scaleType = ImageView.ScaleType.CENTER_CROP; load(currentSong?.cover) { transformations(BlurTransformation(this@MainActivity, 25f)) } }
+        // CORRECCIÓN: Eliminamos BlurTransformation externa para evitar error de compilación
+        val bg = ImageView(this).apply { 
+            layoutParams = RelativeLayout.LayoutParams(-1,-1); alpha = 0.4f; scaleType = ImageView.ScaleType.CENTER_CROP
+            load(currentSong?.cover)
+        }
         v.addView(bg)
 
         val btnClose = ImageButton(this).apply { setImageResource(android.R.drawable.ic_menu_close_clear_cancel); setBackgroundColor(0); setColorFilter(Color.WHITE); setOnClickListener { d.dismiss() } }
-        val btnMenu = ImageButton(this).apply { 
-            setImageResource(android.R.drawable.ic_menu_preferences); setBackgroundColor(0); setColorFilter(Color.GRAY)
-            layoutParams = RelativeLayout.LayoutParams(120, 120).apply { addRule(RelativeLayout.ALIGN_PARENT_END) }
-            setOnClickListener { showPopMenu(it) }
-        }
         
         val flipContainer = FrameLayout(this).apply {
             id = View.generateViewId()
@@ -227,21 +214,19 @@ class MainActivity : AppCompatActivity() {
         }
         val front = CardView(this).apply { radius = 50f; addView(ImageView(context).apply { scaleType = ImageView.ScaleType.CENTER_CROP; load(currentSong?.cover) }) }
         val back = CardView(this).apply { 
-            radius = 50f; visibility = View.GONE; setCardBackgroundColor(Color.BLACK)
-            val txt = TextView(context).apply { text = "CONTRA PORTADA\n\n- Tracklist -\n- Créditos -"; setTextColor(Color.WHITE); gravity = Gravity.CENTER }
-            addView(txt)
+            radius = 50f; visibility = View.GONE; setCardBackgroundColor(Color.parseColor("#1A1A1A"))
+            addView(TextView(context).apply { text = "LADO B\nTracklist"; setTextColor(Color.GRAY); gravity = Gravity.CENTER })
         }
         flipContainer.addView(back); flipContainer.addView(front)
         flipContainer.setOnClickListener {
             val (outV, inV) = if (front.visibility == View.VISIBLE) front to back else back to front
-            outV.animate().rotationY(90f).setDuration(300).withEndAction { outV.visibility = View.GONE; inV.rotationY = -90f; inV.visibility = View.VISIBLE; inV.animate().rotationY(0f).setDuration(300).start() }.start()
+            outV.animate().rotationY(90f).setDuration(250).withEndAction { outV.visibility = View.GONE; inV.rotationY = -90f; inV.visibility = View.VISIBLE; inV.animate().rotationY(0f).setDuration(250).start() }.start()
         }
 
         val info = LinearLayout(this).apply { 
             orientation = LinearLayout.VERTICAL; layoutParams = RelativeLayout.LayoutParams(-1,-2).apply { addRule(RelativeLayout.BELOW, flipContainer.id); topMargin = 50; setMargins(60,0,60,0) }
-            val t = TextView(context).apply { text = currentSong?.title; setTextColor(Color.WHITE); textSize = 26f; typeface = Typeface.DEFAULT_BOLD }
-            val a = TextView(context).apply { text = currentSong?.artist; setTextColor(Color.CYAN); textSize = 18f }
-            addView(t); addView(a)
+            addView(TextView(context).apply { text = currentSong?.title; setTextColor(Color.WHITE); textSize = 26f; typeface = Typeface.DEFAULT_BOLD })
+            addView(TextView(context).apply { text = currentSong?.artist; setTextColor(Color.CYAN); textSize = 18f })
         }
 
         val controls = RelativeLayout(this).apply { layoutParams = RelativeLayout.LayoutParams(-1,-2).apply { addRule(RelativeLayout.ALIGN_PARENT_BOTTOM); bottomMargin = 100; setMargins(60,0,60,0) } }
@@ -249,26 +234,19 @@ class MainActivity : AppCompatActivity() {
         timeElapsedTxt = TextView(this).apply { text = "0:00"; setTextColor(Color.WHITE); layoutParams = RelativeLayout.LayoutParams(-2,-2).apply { addRule(RelativeLayout.BELOW, fullSeekBar!!.id) } }
         timeTotalTxt = TextView(this).apply { text = "0:00"; setTextColor(Color.WHITE); layoutParams = RelativeLayout.LayoutParams(-2,-2).apply { addRule(RelativeLayout.BELOW, fullSeekBar!!.id); addRule(RelativeLayout.ALIGN_PARENT_END) } }
         val btnPlay = ImageButton(this).apply { 
-            setImageResource(android.R.drawable.ic_media_play); layoutParams = RelativeLayout.LayoutParams(200, 200).apply { addRule(RelativeLayout.BELOW, timeElapsedTxt!!.id); addRule(RelativeLayout.CENTER_HORIZONTAL); topMargin = 50 }
-            setOnClickListener { if(player?.isPlaying == true) player?.pause() else player?.play() }
+            setImageResource(android.R.drawable.ic_media_play); layoutParams = RelativeLayout.LayoutParams(180, 180).apply { addRule(RelativeLayout.BELOW, timeElapsedTxt!!.id); addRule(RelativeLayout.CENTER_HORIZONTAL); topMargin = 40 }
+            background = null; setOnClickListener { if(player?.isPlaying == true) player?.pause() else player?.play() }
         }
         controls.addView(fullSeekBar); controls.addView(timeElapsedTxt); controls.addView(timeTotalTxt); controls.addView(btnPlay)
         
-        v.addView(btnClose); v.addView(btnMenu); v.addView(flipContainer); v.addView(info); v.addView(controls)
+        v.addView(btnClose); v.addView(flipContainer); v.addView(info); v.addView(controls)
         d.setContentView(v); d.show()
-    }
-
-    private fun showPopMenu(v: View) {
-        val p = PopupMenu(this, v)
-        p.menu.add("AutoEq").setOnMenuItemClickListener { true }
-        p.menu.add("Letra").setOnMenuItemClickListener { true }
-        p.show()
     }
 
     private fun openAlbumDetail(a: Album) {
         val d = Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen)
         val v = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(Color.BLACK); setPadding(50, 100, 50, 50) }
-        v.addView(TextView(this).apply { text = a.title; setTextColor(Color.WHITE); textSize = 24f })
+        v.addView(TextView(this).apply { text = a.title; setTextColor(Color.WHITE); textSize = 24f; setPadding(0,0,0,40) })
         val rv = RecyclerView(this).apply { layoutManager = LinearLayoutManager(this@MainActivity) }
         val list = mutableListOf<Song>()
         val adapter = SongAdapter(list) { playSong(it); d.dismiss() }
@@ -290,7 +268,7 @@ class MainActivity : AppCompatActivity() {
     inner class SongAdapter(val list: List<Song>, val onClick: (Song) -> Unit) : RecyclerView.Adapter<SongAdapter.VH>() {
         inner class VH(v: View) : RecyclerView.ViewHolder(v)
         override fun onCreateViewHolder(p: ViewGroup, t: Int): VH {
-            val root = RelativeLayout(p.context).apply { setPadding(0, 20, 0, 20) }
+            val root = RelativeLayout(p.context).apply { setPadding(0, 20, 0, 20); isClickable = true; isFocusable = true }
             val img = ImageView(p.context).apply { id = 10; layoutParams = RelativeLayout.LayoutParams(120, 120) }
             val txts = LinearLayout(p.context).apply { 
                 orientation = LinearLayout.VERTICAL; setPadding(30, 0, 0, 0)
