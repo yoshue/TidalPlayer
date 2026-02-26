@@ -23,10 +23,9 @@ import kotlinx.coroutines.*
 import org.json.JSONObject
 import java.net.URL
 
-// --- MODELOS DE DATOS ---
+// Modelos de datos
 data class Song(val id: String, val title: String, val artist: String, val artistId: String, val albumId: String, val cover: String, val preview: String, val duration: Int = 0)
 data class Album(val id: String, val title: String, val cover: String, val artist: String)
-data class LyricLine(val timeMs: Long, val text: String)
 
 class MainActivity : AppCompatActivity() {
 
@@ -65,7 +64,7 @@ class MainActivity : AppCompatActivity() {
             layoutParams = LinearLayout.LayoutParams(-1, -2).apply { topMargin = 40 }
         }
         val input = EditText(this).apply {
-            id = View.generateViewId(); hint = "Megadeth..."; setHintTextColor(Color.GRAY); setTextColor(Color.WHITE); background = null
+            id = View.generateViewId(); hint = "Buscar..."; setHintTextColor(Color.GRAY); setTextColor(Color.WHITE); background = null
             imeOptions = EditorInfo.IME_ACTION_SEARCH; inputType = android.text.InputType.TYPE_CLASS_TEXT
             layoutParams = RelativeLayout.LayoutParams(-1, -2).apply { addRule(RelativeLayout.START_OF, 99) }
         }
@@ -82,7 +81,7 @@ class MainActivity : AppCompatActivity() {
         }
         val content = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(50, 0, 50, 400) }
         
-        content.addView(createLabel("Álbumes Destacados"))
+        content.addView(createLabel("Álbumes"))
         val rvAlbums = RecyclerView(this).apply { layoutManager = LinearLayoutManager(this@MainActivity, LinearLayoutManager.HORIZONTAL, false) }
         albumAdapter = AlbumAdapter(albumList) { openAlbumDetail(it) }
         rvAlbums.adapter = albumAdapter
@@ -122,10 +121,21 @@ class MainActivity : AppCompatActivity() {
         })
     }
 
-    private fun initAudioEngine(id: Int) {
+    // CORRECCIÓN: Parámetros del Ecualizador según API de Android
+    private fun initAudioEngine(sessionId: Int) {
         try {
-            val config = DynamicsProcessing.Config.Builder(0, 1, true, DynamicsProcessing.Eq(true, true, 10), false, null, false, null, true, DynamicsProcessing.Limiter(true, true, 0, 1f, 2f, 1f, 10f, 0f)).build()
-            dynamicsProcessing = DynamicsProcessing(0, id, config).apply { enabled = true }
+            val configBuilder = DynamicsProcessing.Config.Builder(
+                0, // variant
+                1, // channelCount
+                true, // preEqInUse
+                10, // preEqBandCount
+                false, // mbcInUse
+                0, // mbcBandCount
+                false, // postEqInUse
+                0, // postEqBandCount
+                true // limiterInUse
+            )
+            dynamicsProcessing = DynamicsProcessing(0, sessionId, configBuilder.build()).apply { enabled = true }
         } catch (e: Exception) { e.printStackTrace() }
     }
 
@@ -218,7 +228,7 @@ class MainActivity : AppCompatActivity() {
         val front = CardView(this).apply { radius = 50f; addView(ImageView(context).apply { scaleType = ImageView.ScaleType.CENTER_CROP; load(currentSong?.cover) }) }
         val back = CardView(this).apply { 
             radius = 50f; visibility = View.GONE; setCardBackgroundColor(Color.BLACK)
-            val txt = TextView(context).apply { text = "TRACKLIST\n\n1. ${currentSong?.title}\n..."; setTextColor(Color.WHITE); gravity = Gravity.CENTER }
+            val txt = TextView(context).apply { text = "CONTRA PORTADA\n\n- Tracklist -\n- Créditos -"; setTextColor(Color.WHITE); gravity = Gravity.CENTER }
             addView(txt)
         }
         flipContainer.addView(back); flipContainer.addView(front)
@@ -250,8 +260,8 @@ class MainActivity : AppCompatActivity() {
 
     private fun showPopMenu(v: View) {
         val p = PopupMenu(this, v)
-        p.menu.add("Ecualizador").setOnMenuItemClickListener { true }
-        p.menu.add("Ir al Artista").setOnMenuItemClickListener { true }
+        p.menu.add("AutoEq").setOnMenuItemClickListener { true }
+        p.menu.add("Letra").setOnMenuItemClickListener { true }
         p.show()
     }
 
@@ -264,18 +274,19 @@ class MainActivity : AppCompatActivity() {
         val adapter = SongAdapter(list) { playSong(it); d.dismiss() }
         rv.adapter = adapter
         lifecycleScope.launch(Dispatchers.IO) {
-            val data = URL("https://api.deezer.com/album/${a.id}/tracks").readText()
-            val arr = JSONObject(data).getJSONArray("data")
-            for(i in 0 until arr.length()) {
-                val o = arr.getJSONObject(i)
-                list.add(Song(o.getString("id"), o.getString("title"), a.artist, "", a.id, a.cover, o.getString("preview"), o.getInt("duration")))
-            }
-            withContext(Dispatchers.Main) { adapter.notifyDataSetChanged() }
+            try {
+                val data = URL("https://api.deezer.com/album/${a.id}/tracks").readText()
+                val arr = JSONObject(data).getJSONArray("data")
+                for(i in 0 until arr.length()) {
+                    val o = arr.getJSONObject(i)
+                    list.add(Song(o.getString("id"), o.getString("title"), a.artist, "", a.id, a.cover, o.getString("preview"), o.getInt("duration")))
+                }
+                withContext(Dispatchers.Main) { adapter.notifyDataSetChanged() }
+            } catch(e: Exception) { e.printStackTrace() }
         }
         v.addView(rv); d.setContentView(v); d.show()
     }
 
-    // --- ADAPTADORES ---
     inner class SongAdapter(val list: List<Song>, val onClick: (Song) -> Unit) : RecyclerView.Adapter<SongAdapter.VH>() {
         inner class VH(v: View) : RecyclerView.ViewHolder(v)
         override fun onCreateViewHolder(p: ViewGroup, t: Int): VH {
@@ -313,4 +324,8 @@ class MainActivity : AppCompatActivity() {
             val a = list[p]
             h.itemView.findViewById<ImageView>(20).load(a.cover) { transformations(RoundedCornersTransformation(25f)) }
             h.itemView.findViewById<TextView>(21).text = a.title
-            h.itemView.setOnClickListener { onClick
+            h.itemView.setOnClickListener { onClick(a) }
+        }
+        override fun getItemCount() = list.size
+    }
+}
